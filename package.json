@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "mcp": "pnpm --filter @openmovie/mcp-server dev --",
+    "perf:baseline": "node --import tsx scripts/performance-baseline.ts",
     "cli": "pnpm --filter @openmovie/cli dev --",
     "test": "vitest run",
     "test:watch": "vitest",

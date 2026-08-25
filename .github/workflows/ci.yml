@@ -27,6 +27,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm build
+      - run: pnpm perf:baseline -- --enforce
       - name: Package unpacked desktop
         run: pnpm --filter @openmovie/desktop exec electron-builder --dir --publish never
 

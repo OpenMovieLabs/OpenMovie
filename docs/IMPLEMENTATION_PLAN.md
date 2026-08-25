@@ -356,7 +356,7 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 - [x] Crash Recovery。
 - [x] Project Backup/Repair。
 - [x] 磁盘与 Cache 管理。
-- 性能基线。
+- [x] 性能基线。
 - Accessibility。
 - 国际化基础。
 - Plugin 开发模式。

@@ -4,5 +4,5 @@
     "jsx": "react-jsx",
     "types": ["node", "vite/client"]
   },
-  "include": ["apps", "packages", "*.ts"]
+  "include": ["apps", "packages", "scripts/**/*.ts", "*.ts"]
 }
