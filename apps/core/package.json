@@ -5,20 +5,19 @@
   "type": "module",
   "main": "dist/main.cjs",
   "scripts": {
-    "build": "tsup src/main.ts --format cjs --platform node --target node22 --external better-sqlite3 --clean --sourcemap",
+    "build": "tsup src/main.ts --format cjs --platform node --target node22 --clean --sourcemap && node ../../scripts/copy-sqlite-binding.mjs dist",
     "clean": "rimraf dist",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.cjs",
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": {
-    "better-sqlite3": "13.0.3"
-  },
   "devDependencies": {
     "@openmovie/contracts": "workspace:*",
+    "@openmovie/agent-gateway": "workspace:*",
     "@openmovie/provider-gateway": "workspace:*",
     "@openmovie/project-store": "workspace:*",
     "@openmovie/task-engine": "workspace:*",
+    "better-sqlite3": "13.0.3",
     "rimraf": "^6.0.1",
     "tsup": "8.5.1",
     "tsx": "4.23.12",

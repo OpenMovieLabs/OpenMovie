@@ -89,7 +89,11 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   z.object({
     id: commandIdSchema,
     method: z.literal('task.create'),
-    params: z.object({ goal: z.string().trim().min(1).max(10_000) }),
+    params: z.object({
+      goal: z.string().trim().min(1).max(10_000),
+      plannerProviderId: z.string().min(1).default('fake'),
+      plannerModel: z.string().min(1).default('fake-text-v1'),
+    }),
   }),
   z.object({
     id: commandIdSchema,
@@ -105,6 +109,25 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     id: commandIdSchema,
     method: z.literal('task.cancel'),
     params: z.object({ taskId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('provider.configure_openai_compatible'),
+    params: z.object({
+      id: z.string().min(1),
+      baseUrl: z.string().url(),
+      apiKey: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('provider.list'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('harness.list'),
+    params: z.object({}).default({}),
   }),
 ]);
 
@@ -192,6 +215,15 @@ export const taskSchema = z.object({
   error: z.string().optional(),
 });
 
+export const harnessHealthSchema = z.object({
+  id: z.enum(['codex', 'claude_code', 'direct']),
+  name: z.string(),
+  available: z.boolean(),
+  version: z.string().optional(),
+  capabilities: z.array(z.string()),
+  error: z.string().optional(),
+});
+
 export const coreSuccessSchema = z.object({
   id: commandIdSchema,
   ok: z.literal(true),
@@ -217,6 +249,7 @@ export type MoviePatchOperation = z.infer<typeof moviePatchOperationSchema>;
 export type RevisionRecord = z.infer<typeof revisionRecordSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type HarnessHealth = z.infer<typeof harnessHealthSchema>;
 
 export function assertProtocolCompatible(clientVersion: string): void {
   const clientMajor = clientVersion.split('.')[0];

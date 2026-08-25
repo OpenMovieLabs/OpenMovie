@@ -1,5 +1,6 @@
 import type {
   CoreHealth,
+  HarnessHealth,
   InitializeResult,
   ProjectSummary,
   RevisionRecord,
@@ -17,10 +18,11 @@ export type OpenMovieDesktopApi = {
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
-  runTask: (goal: string) => Promise<TaskRunResult>;
+  runTask: (goal: string, plannerProviderId?: string) => Promise<TaskRunResult>;
   listSecrets: () => Promise<SecretMetadata[]>;
   setSecret: (id: string, label: string, value: string) => Promise<SecretMetadata>;
   deleteSecret: (id: string) => Promise<boolean>;
+  listHarnesses: () => Promise<HarnessHealth[]>;
   listProviders: () => Promise<ProviderProfile[]>;
   saveProvider: (input: SaveProviderInput) => Promise<ProviderProfile>;
 };
@@ -69,11 +71,13 @@ const api: OpenMovieDesktopApi = {
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,
   restoreRevision: (revisionId) =>
     ipcRenderer.invoke('openmovie:revision-restore', revisionId) as Promise<ProjectSummary>,
-  runTask: (goal) => ipcRenderer.invoke('openmovie:task-run', goal) as Promise<TaskRunResult>,
+  runTask: (goal, plannerProviderId) =>
+    ipcRenderer.invoke('openmovie:task-run', goal, plannerProviderId) as Promise<TaskRunResult>,
   listSecrets: () => ipcRenderer.invoke('openmovie:secret-list') as Promise<SecretMetadata[]>,
   setSecret: (id, label, value) =>
     ipcRenderer.invoke('openmovie:secret-set', id, label, value) as Promise<SecretMetadata>,
   deleteSecret: (id) => ipcRenderer.invoke('openmovie:secret-delete', id) as Promise<boolean>,
+  listHarnesses: () => ipcRenderer.invoke('openmovie:harness-list') as Promise<HarnessHealth[]>,
   listProviders: () => ipcRenderer.invoke('openmovie:provider-list') as Promise<ProviderProfile[]>,
   saveProvider: (input) =>
     ipcRenderer.invoke('openmovie:provider-save', input) as Promise<ProviderProfile>,

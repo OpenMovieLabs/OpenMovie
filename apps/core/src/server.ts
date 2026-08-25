@@ -7,7 +7,12 @@ import {
   type CoreResponse,
 } from '@openmovie/contracts';
 import { ProjectStore, ProjectStoreError } from '@openmovie/project-store';
-import { FakeProvider, ProviderGateway } from '@openmovie/provider-gateway';
+import {
+  FakeProvider,
+  OpenAICompatibleProvider,
+  ProviderGateway,
+} from '@openmovie/provider-gateway';
+import { ClaudeCodeDetector, CodexAppServerAdapter } from '@openmovie/agent-gateway';
 import { TaskEngine } from '@openmovie/task-engine';
 
 const startedAt = new Date();
@@ -21,10 +26,29 @@ export class CoreServer {
   private project: ProjectStore | undefined;
   private readonly tasks = new TaskEngine();
   private readonly providers = new ProviderGateway();
+  private readonly codex = new CodexAppServerAdapter();
+  private readonly claude = new ClaudeCodeDetector();
 
   constructor() {
     const fake = new FakeProvider();
     this.providers.register(fake);
+    this.tasks.registerStep('text.generate', async (input, context) => {
+      const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      const provider = this.providers.get(providerId);
+      if (!provider.generateText) throw new Error(`Provider cannot generate text: ${providerId}`);
+      return provider.generateText({
+        model: typeof input.model === 'string' ? input.model : 'fake-text-v1',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are OpenMovie Direct Agent. Return a concise visual plan for the requested movie frame.',
+          },
+          { role: 'user', content: context.task.goal },
+        ],
+        signal: context.signal,
+      });
+    });
     this.tasks.registerStep('image.generate', async (input, context) => {
       const project = this.requireProject();
       const provider = this.providers.get('fake');
@@ -175,6 +199,14 @@ export class CoreServer {
         this.requireProject();
         const task = this.tasks.create(command.params.goal, [
           {
+            kind: 'text.generate',
+            title: 'Plan the visual intent',
+            input: {
+              providerId: command.params.plannerProviderId,
+              model: command.params.plannerModel,
+            },
+          },
+          {
             kind: 'image.generate',
             title: 'Generate a visual fixture',
             input: { prompt: command.params.goal },
@@ -190,6 +222,44 @@ export class CoreServer {
         return { id: command.id, ok: true, result: this.tasks.list() };
       case 'task.cancel':
         return { id: command.id, ok: true, result: this.tasks.cancel(command.params.taskId) };
+      case 'provider.configure_openai_compatible':
+        this.providers.upsert(
+          new OpenAICompatibleProvider({
+            id: command.params.id,
+            baseUrl: command.params.baseUrl,
+            apiKey: command.params.apiKey,
+          }),
+        );
+        return { id: command.id, ok: true, result: { id: command.params.id } };
+      case 'provider.list':
+        return { id: command.id, ok: true, result: this.providers.list() };
+      case 'harness.list': {
+        const [codex, claude] = await Promise.all([this.codex.detect(), this.claude.detect()]);
+        return {
+          id: command.id,
+          ok: true,
+          result: [
+            {
+              id: 'direct',
+              name: 'OpenMovie Direct Agent',
+              available: true,
+              capabilities: ['plan', 'tool_call', 'provider_gateway'],
+            },
+            {
+              id: 'codex',
+              name: 'Codex',
+              ...codex,
+              capabilities: ['app_server', 'streaming', 'approval', 'tools'],
+            },
+            {
+              id: 'claude_code',
+              name: 'Claude Code',
+              ...claude,
+              capabilities: claude.available ? ['cli_detected'] : [],
+            },
+          ],
+        };
+      }
     }
   }
 

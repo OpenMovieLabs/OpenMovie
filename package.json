@@ -19,6 +19,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke:desktop": "node scripts/smoke-desktop.mjs",
     "typecheck": "pnpm -r --if-present typecheck",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
   },

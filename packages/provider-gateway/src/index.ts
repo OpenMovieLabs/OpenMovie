@@ -55,6 +55,10 @@ export class ProviderGateway {
     this.providers.set(provider.id, provider);
   }
 
+  upsert(provider: ModelProvider): void {
+    this.providers.set(provider.id, provider);
+  }
+
   get(providerId: string): ModelProvider {
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error(`Provider not found: ${providerId}`);

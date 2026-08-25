@@ -40,6 +40,18 @@ OpenMovie Desktop
 → Codex / Claude Code / Direct Agent / Model APIs
 ```
 
+## Development
+
+Requires Node 22 and pnpm 11.
+
+```bash
+pnpm install
+pnpm check
+pnpm dev
+```
+
+Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Revision commit, Fake Provider media task, Object Store import, and Harness detection.
+
 ## Repository
 
 https://github.com/OpenMovieLabs/OpenMovie

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   Clapperboard,
@@ -12,6 +12,7 @@ import {
 
 import type {
   CoreHealth,
+  HarnessHealth,
   InitializeResult,
   ProjectSummary,
   RevisionRecord,
@@ -25,7 +26,9 @@ type RuntimeState =
   | { kind: 'error'; message: string };
 
 export function App(): React.JSX.Element {
+  const initialized = useRef(false);
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' });
+  const [harnesses, setHarnesses] = useState<HarnessHealth[]>([]);
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -40,6 +43,7 @@ export function App(): React.JSX.Element {
     model: '',
     apiKey: '',
   });
+  const [plannerProviderId, setPlannerProviderId] = useState('fake');
   const [title, setTitle] = useState('Untitled Movie');
   const [goal, setGoal] = useState('Create a cinematic establishing frame for the opening scene');
   const [lastTask, setLastTask] = useState<Task | null>(null);
@@ -47,24 +51,24 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-    void Promise.all([window.openMovie.initialize(), window.openMovie.coreHealth()])
-      .then(([initialize, health]) => {
-        if (active) {
-          setRuntime({ kind: 'ready', initialize, health });
-          window.openMovie.reportReady();
-        }
+    if (initialized.current) return;
+    initialized.current = true;
+    void Promise.all([
+      window.openMovie.initialize(),
+      window.openMovie.coreHealth(),
+      window.openMovie.listHarnesses(),
+    ])
+      .then(([initialize, health, detectedHarnesses]) => {
+        setRuntime({ kind: 'ready', initialize, health });
+        setHarnesses(detectedHarnesses);
+        window.openMovie.reportReady();
       })
       .catch((caught: unknown) => {
-        if (active)
-          setRuntime({
-            kind: 'error',
-            message: caught instanceof Error ? caught.message : String(caught),
-          });
+        setRuntime({
+          kind: 'error',
+          message: caught instanceof Error ? caught.message : String(caught),
+        });
       });
-    return () => {
-      active = false;
-    };
   }, []);
 
   const run = async (work: () => Promise<void>): Promise<void> => {
@@ -112,11 +116,18 @@ export function App(): React.JSX.Element {
 
   const runTask = (): void => {
     void run(async () => {
-      const result = await window.openMovie.runTask(goal);
+      const result = await window.openMovie.runTask(goal, plannerProviderId);
       setLastTask(result.task);
       setProject(result.project);
       setRevisions(result.revisions);
       setShowTask(false);
+    });
+  };
+
+  const openTask = (): void => {
+    void run(async () => {
+      setProviders(await window.openMovie.listProviders());
+      setShowTask(true);
     });
   };
 
@@ -185,7 +196,7 @@ export function App(): React.JSX.Element {
                   {project.root}
                 </p>
               </div>
-              <button className="primary" disabled={busy} onClick={() => setShowTask(true)}>
+              <button className="primary" disabled={busy} onClick={openTask}>
                 <Sparkles size={17} /> Give OpenMovie a task
               </button>
             </div>
@@ -257,12 +268,21 @@ export function App(): React.JSX.Element {
                 Create a structured movie project, then give OpenMovie a goal in plain language.
               </p>
             </div>
-            <div className="runtime-status" data-state={runtime.kind}>
-              <span className="status-dot" />
-              {runtime.kind === 'loading' && 'Starting OpenMovie Core…'}
-              {runtime.kind === 'error' && `Core unavailable: ${runtime.message}`}
-              {runtime.kind === 'ready' &&
-                `Core ${runtime.health.status} · protocol ${runtime.initialize.protocolVersion}`}
+            <div className="health-stack">
+              <div className="runtime-status" data-state={runtime.kind}>
+                <span className="status-dot" />
+                {runtime.kind === 'loading' && 'Starting OpenMovie Core…'}
+                {runtime.kind === 'error' && `Core unavailable: ${runtime.message}`}
+                {runtime.kind === 'ready' &&
+                  `Core ${runtime.health.status} · protocol ${runtime.initialize.protocolVersion}`}
+              </div>
+              <div className="harness-list">
+                {harnesses.map((harness) => (
+                  <span key={harness.id} data-available={harness.available}>
+                    {harness.name}
+                  </span>
+                ))}
+              </div>
             </div>
           </section>
         </main>
@@ -321,9 +341,25 @@ export function App(): React.JSX.Element {
               Goal
               <textarea autoFocus value={goal} onChange={(event) => setGoal(event.target.value)} />
             </label>
+            <label>
+              Planning model
+              <select
+                value={plannerProviderId}
+                onChange={(event) => setPlannerProviderId(event.target.value)}
+              >
+                <option value="fake">Built-in Fake Provider</option>
+                {providers
+                  .filter((provider) => provider.hasSecret && provider.protocol === 'openai_chat')
+                  .map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.label} · {provider.model}
+                    </option>
+                  ))}
+              </select>
+            </label>
             <p>
-              The first vertical slice uses a deterministic local Fake Provider and commits its
-              image artifact as a Revision.
+              The planning model produces visual intent; the deterministic image fixture keeps this
+              early slice free of paid generation calls.
             </p>
             <div className="modal-actions">
               <button className="secondary" onClick={() => setShowTask(false)}>

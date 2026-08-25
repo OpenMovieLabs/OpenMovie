@@ -179,6 +179,26 @@ h1 {
     Menlo,
     monospace;
 }
+.health-stack {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+.harness-list {
+  display: flex;
+  gap: 6px;
+}
+.harness-list span {
+  padding: 4px 7px;
+  color: #66645f;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  font-size: 10px;
+}
+.harness-list span[data-available='true'] {
+  color: #8db793;
+  border-color: rgba(127, 189, 133, 0.2);
+}
 .status-dot {
   width: 7px;
   height: 7px;
@@ -381,7 +401,8 @@ h1 {
   font-size: 12px;
 }
 .modal input,
-.modal textarea {
+.modal textarea,
+.modal select {
   width: 100%;
   padding: 12px 13px;
   color: #f4f0e8;
@@ -397,7 +418,8 @@ h1 {
   font-family: inherit;
 }
 .modal input:focus,
-.modal textarea:focus {
+.modal textarea:focus,
+.modal select:focus {
   border-color: #c78e50;
   box-shadow: 0 0 0 3px rgba(199, 142, 80, 0.1);
 }

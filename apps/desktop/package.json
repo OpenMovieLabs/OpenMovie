@@ -10,6 +10,7 @@
     "clean": "rimraf out",
     "dev": "pnpm --filter @openmovie/core build && electron-vite dev",
     "package": "pnpm build && electron-builder --publish never",
+    "package:dir": "pnpm build && electron-builder --dir --publish never",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json"
   },
   "dependencies": {
@@ -53,6 +54,10 @@
           "main.cjs",
           "main.cjs.map"
         ]
+      },
+      {
+        "from": "../core/build/Release/better_sqlite3.node",
+        "to": "build/Release/better_sqlite3.node"
       }
     ],
     "mac": {

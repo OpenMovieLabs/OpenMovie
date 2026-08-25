@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import {
   PROTOCOL_VERSION,
   coreHealthSchema,
+  harnessHealthSchema,
   initializeResultSchema,
   projectSummarySchema,
   revisionRecordSchema,
@@ -102,6 +103,11 @@ void app
     ipcMain.handle('openmovie:core-health', async () =>
       coreHealthSchema.parse(await core?.request({ method: 'core.health', params: {} })),
     );
+    ipcMain.handle('openmovie:harness-list', async () =>
+      harnessHealthSchema
+        .array()
+        .parse(await core?.request({ method: 'harness.list', params: {} })),
+    );
     ipcMain.handle('openmovie:project-create', async (_event, title: unknown) => {
       if (typeof title !== 'string' || title.trim().length === 0)
         throw new Error('Title is required');
@@ -181,25 +187,50 @@ void app
         await core?.request({ method: 'project.get_summary', params: {} }),
       );
     });
-    ipcMain.handle('openmovie:task-run', async (_event, goal: unknown) => {
-      if (typeof goal !== 'string' || goal.trim().length === 0)
-        throw new Error('Task goal is required');
-      const created = taskSchema.parse(
-        await core?.request({ method: 'task.create', params: { goal: goal.trim() } }),
-      );
-      const task = taskSchema.parse(
-        await core?.request({ method: 'task.run', params: { taskId: created.id } }, 60_000),
-      );
-      return {
-        task,
-        project: projectSummarySchema.parse(
-          await core?.request({ method: 'project.get_summary', params: {} }),
-        ),
-        revisions: revisionRecordSchema
-          .array()
-          .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
-      };
-    });
+    ipcMain.handle(
+      'openmovie:task-run',
+      async (_event, goal: unknown, plannerProviderId: unknown) => {
+        if (typeof goal !== 'string' || goal.trim().length === 0)
+          throw new Error('Task goal is required');
+        let providerId = 'fake';
+        let model = 'fake-text-v1';
+        if (typeof plannerProviderId === 'string' && plannerProviderId !== 'fake') {
+          if (!secrets) throw new Error('Secret Store is unavailable');
+          const profile = secrets
+            .listProviderProfiles()
+            .find((item) => item.id === plannerProviderId);
+          if (!profile) throw new Error(`Provider profile not found: ${plannerProviderId}`);
+          if (profile.protocol !== 'openai_chat') {
+            throw new Error('This Direct Agent slice currently supports OpenAI Chat profiles');
+          }
+          const apiKey = await secrets.get(profile.secretId);
+          await core?.request({
+            method: 'provider.configure_openai_compatible',
+            params: { id: profile.id, baseUrl: profile.baseUrl, apiKey },
+          });
+          providerId = profile.id;
+          model = profile.model;
+        }
+        const created = taskSchema.parse(
+          await core?.request({
+            method: 'task.create',
+            params: { goal: goal.trim(), plannerProviderId: providerId, plannerModel: model },
+          }),
+        );
+        const task = taskSchema.parse(
+          await core?.request({ method: 'task.run', params: { taskId: created.id } }, 60_000),
+        );
+        return {
+          task,
+          project: projectSummarySchema.parse(
+            await core?.request({ method: 'project.get_summary', params: {} }),
+          ),
+          revisions: revisionRecordSchema
+            .array()
+            .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
+        };
+      },
+    );
     ipcMain.handle('openmovie:secret-list', () => secrets?.list() ?? []);
     ipcMain.handle(
       'openmovie:secret-set',
@@ -268,7 +299,11 @@ void app
         const smokeTask = taskSchema.parse(
           await core.request({
             method: 'task.create',
-            params: { goal: 'Generate the opening frame' },
+            params: {
+              goal: 'Generate the opening frame',
+              plannerProviderId: 'fake',
+              plannerModel: 'fake-text-v1',
+            },
           }),
         );
         const completedTask = taskSchema.parse(
