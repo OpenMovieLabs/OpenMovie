@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openmovie.dev/schemas/openmovie/v0.json",
+  "title": "OpenMovie Project Manifest v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project", "delivery", "entrypoints", "policies", "extensions"],
+  "properties": {
+    "schema_version": { "const": 0 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "default_locale", "created_at"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "default_locale": { "type": "string", "minLength": 2, "maxLength": 35 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "frame_rate", "audio_sample_rate"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 16, "maximum": 16384 },
+        "height": { "type": "integer", "minimum": 16, "maximum": 16384 },
+        "frame_rate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["numerator", "denominator"],
+          "properties": {
+            "numerator": { "type": "integer", "minimum": 1 },
+            "denominator": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "audio_sample_rate": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "entrypoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["brief", "story_bible", "screenplay", "timeline", "asset_manifest"],
+      "properties": {
+        "brief": { "$ref": "#/$defs/path" },
+        "story_bible": { "$ref": "#/$defs/path" },
+        "screenplay": { "$ref": "#/$defs/path" },
+        "timeline": { "$ref": "#/$defs/path" },
+        "asset_manifest": { "$ref": "#/$defs/path" }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_generation_strategy", "protected_revision"],
+      "properties": {
+        "default_generation_strategy": { "enum": ["fast", "balanced", "quality"] },
+        "protected_revision": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+      }
+    },
+    "extensions": { "type": "object" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$" },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+node_modules/
+dist/
+out/
+coverage/
+.DS_Store
+Thumbs.db
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.vite/
+.turbo/
+release/
+artifacts/
+
+# OpenMovie local project state
+.openmovie/state.sqlite*
+.openmovie/tmp/
+.openmovie/locks/
+.openmovie/logs/
+.openmovie/cache/

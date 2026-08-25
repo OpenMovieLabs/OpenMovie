@@ -1,0 +1,20 @@
+{
+  "name": "@openmovie/project-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@openmovie/movie-ir": "workspace:*",
+    "better-sqlite3": "13.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "typescript": "6.0.3"
+  }
+}
