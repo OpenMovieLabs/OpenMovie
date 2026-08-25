@@ -349,6 +349,15 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('provider.configure_openai_responses'),
+    params: z.object({
+      id: z.string().min(1),
+      baseUrl: z.string().url(),
+      apiKey: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('provider.configure_http_video'),
     params: z.object({
       id: z.string().min(1),

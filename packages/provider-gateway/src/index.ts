@@ -389,6 +389,137 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 }
 
+export type OpenAIResponsesOptions = {
+  id: string;
+  baseUrl: string;
+  apiKey: string;
+  headers?: Record<string, string>;
+  fetch?: typeof fetch;
+};
+
+export class OpenAIResponsesProvider implements ModelProvider {
+  readonly capabilities = new Set<ProviderCapability>(['text.generate', 'image.understand']);
+
+  constructor(private readonly options: OpenAIResponsesOptions) {}
+
+  get id(): string {
+    return this.options.id;
+  }
+
+  async generateText(request: GenerateTextRequest): Promise<GenerateTextResult> {
+    const url = new URL(
+      'responses',
+      this.options.baseUrl.endsWith('/') ? this.options.baseUrl : `${this.options.baseUrl}/`,
+    );
+    if (url.username || url.password || url.hash) {
+      throw new Error('Provider endpoint cannot contain credentials or a URL fragment');
+    }
+    if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      throw new Error('Provider endpoint must use HTTPS unless it is localhost');
+    }
+    const instructions = request.messages
+      .filter((message) => message.role === 'system')
+      .map((message) =>
+        typeof message.content === 'string'
+          ? message.content
+          : message.content
+              .filter((part) => part.type === 'text')
+              .map((part) => part.text)
+              .join('\n'),
+      )
+      .filter(Boolean)
+      .join('\n\n');
+    const input = request.messages
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
+        role: message.role,
+        content:
+          typeof message.content === 'string'
+            ? [{ type: 'input_text', text: message.content }]
+            : message.content.map((part) =>
+                part.type === 'text'
+                  ? { type: 'input_text', text: part.text }
+                  : { type: 'input_image', image_url: part.url },
+              ),
+      }));
+    const response = await (this.options.fetch ?? fetch)(url, {
+      method: 'POST',
+      ...(request.signal ? { signal: request.signal } : {}),
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${this.options.apiKey}`,
+        ...this.options.headers,
+      },
+      body: JSON.stringify({
+        model: request.model,
+        input,
+        store: false,
+        ...(instructions ? { instructions } : {}),
+        ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+        ...(request.maxOutputTokens === undefined
+          ? {}
+          : { max_output_tokens: request.maxOutputTokens }),
+      }),
+    });
+    if (!response.ok) throw new Error(`Provider Responses HTTP ${response.status}`);
+    const value = (await response.json()) as {
+      id?: string;
+      model?: string;
+      status?: string;
+      output_text?: string;
+      incomplete_details?: { reason?: string } | null;
+      output?: Array<{
+        type?: string;
+        content?: Array<{ type?: string; text?: string }>;
+      }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    const text =
+      value.output_text ??
+      value.output
+        ?.flatMap((item) => item.content ?? [])
+        .filter((part) => part.type === 'output_text')
+        .map((part) => part.text ?? '')
+        .join('');
+    if (!text) throw new Error('Provider Responses output contains no assistant text');
+    return {
+      text,
+      model: value.model ?? request.model,
+      finishReason: value.incomplete_details?.reason ?? value.status ?? 'unknown',
+      ...(value.id ? { rawId: value.id } : {}),
+      usage: {
+        ...(value.usage?.input_tokens === undefined
+          ? {}
+          : { inputTokens: value.usage.input_tokens }),
+        ...(value.usage?.output_tokens === undefined
+          ? {}
+          : { outputTokens: value.usage.output_tokens }),
+      },
+    };
+  }
+
+  async understandImage(request: UnderstandImageRequest): Promise<UnderstandImageResult> {
+    const response = await this.generateText({
+      model: request.model,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: request.prompt },
+            {
+              type: 'image_url',
+              url: request.imageUrl,
+              ...(request.mimeType ? { mimeType: request.mimeType } : {}),
+            },
+          ],
+        },
+      ],
+      ...(request.signal ? { signal: request.signal } : {}),
+    });
+    return { ...response, evidence: [] };
+  }
+}
+
 export type HttpVideoJobProviderOptions = {
   id: string;
   baseUrl: string;

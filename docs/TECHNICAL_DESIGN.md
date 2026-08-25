@@ -181,6 +181,8 @@ Current Cut Renderer 读取 Timeline 的选定 Take，检查其 Shot 归属和�
 
 Direct Agent 的文本输出不直接写文件。Core 只解析 `agentPlanSchema` 白名单动作，并把 Plan 与生成时的 Base Revision 存入 `revision_proposals`。Desktop 用户接受时再次执行乐观并发检查，先在内存中构造并验证所有目标文档，再通过单次 `commitFiles` 写为一个 Agent Revision；过期、未知实体或无实际改动的 Plan 均失败且不覆盖现有工作。
 
+文本与视觉 Provider 同时支持 OpenAI-compatible Chat Completions 和 Responses 两种标准协议。Responses 请求将 System Prompt 映射为 `instructions`，多模态内容映射为 `input_text` / `input_image`，并默认 `store: false`；响应优先读取顶层 `output_text`，再安全聚合 `output[].content[].output_text`。两种协议都只返回稳定 HTTP 状态错误，不把响应正文或凭据写入 Task Event。
+
 ## 5. 推荐仓库结构
 
 ```text

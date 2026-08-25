@@ -393,6 +393,8 @@ Tool 名称采用 namespace.action，例如 shot.get、shot.propose_patch。
 
 Core IPC 另实现 `proposal.list`、`proposal.accept` 和 `proposal.reject`。Proposal 携带经过 `agentPlanSchema` 验证的受限动作、Base Revision、状态和可选 Feedback ID；`proposal.accept` 必须同时匹配当前 Revision，成功后只产生一个 Agent Revision。
 
+Provider 配置实现 `provider.configure_openai_compatible`、`provider.configure_openai_responses` 与 `provider.configure_http_video`。Responses Adapter 使用 `POST /responses`，将 System 内容放入 `instructions`，文本/图片转为 `input_text` / `input_image`，设置 `store: false`，并把 `output_text`、状态与 Token Usage 归一化为统一 `GenerateTextResult`。自定义 LLM Profile 在 MVP 中明确表示“OpenAI Chat-compatible”，不猜测任意私有 Payload。
+
 ## 14. Tool Call
 
 ```typescript

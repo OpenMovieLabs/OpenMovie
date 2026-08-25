@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { FakeProvider, HttpVideoJobProvider, ProviderGateway } from './index.js';
+import {
+  FakeProvider,
+  HttpVideoJobProvider,
+  OpenAIResponsesProvider,
+  ProviderGateway,
+} from './index.js';
 
 describe('ProviderGateway', () => {
   it('registers capabilities and runs deterministic fake providers', async () => {
@@ -73,5 +78,58 @@ describe('ProviderGateway', () => {
     expect((await provider.getVideoJob(job.id)).status).toBe('succeeded');
     expect((await provider.collectVideo(job.id))[0]?.providerJobId).toBe('job_1');
     expect(calls).toHaveLength(3);
+  });
+
+  it('normalizes text and image inputs through the OpenAI Responses protocol', async () => {
+    let requestBody: Record<string, unknown> = {};
+    const provider = new OpenAIResponsesProvider({
+      id: 'responses-test',
+      baseUrl: 'https://api.example/v1/',
+      apiKey: 'test-key',
+      fetch: (_input, init) => {
+        if (typeof init?.body !== 'string') throw new Error('Expected a JSON request body');
+        requestBody = JSON.parse(init.body) as Record<string, unknown>;
+        return Promise.resolve(
+          Response.json({
+            id: 'resp_test',
+            model: 'vision-model',
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                content: [{ type: 'output_text', text: 'A figure crosses the frame.' }],
+              },
+            ],
+            usage: { input_tokens: 12, output_tokens: 7 },
+          }),
+        );
+      },
+    });
+    const result = await provider.understandImage({
+      model: 'vision-model',
+      prompt: 'Describe the shot',
+      imageUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+    });
+
+    expect(result).toMatchObject({
+      text: 'A figure crosses the frame.',
+      model: 'vision-model',
+      finishReason: 'completed',
+      usage: { inputTokens: 12, outputTokens: 7 },
+    });
+    expect(requestBody).toMatchObject({
+      model: 'vision-model',
+      store: false,
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: 'Describe the shot' },
+            { type: 'input_image', image_url: 'data:image/png;base64,AAAA' },
+          ],
+        },
+      ],
+    });
   });
 });

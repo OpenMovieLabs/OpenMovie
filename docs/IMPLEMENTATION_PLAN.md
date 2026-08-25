@@ -169,6 +169,8 @@ tests
 - Cost/Usage。
 - Provider Error Mapping。
 
+OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通用异步 HTTP Video Job Adapter 已进入当前基线；`custom` Profile 的 MVP 语义固定为 OpenAI Chat-compatible，避免对第三方私有格式做隐式猜测。
+
 ### 6.3 Secret Store
 
 - Electron Main safeStorage Async。

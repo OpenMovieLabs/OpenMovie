@@ -14,6 +14,7 @@ import {
   FakeProvider,
   HttpVideoJobProvider,
   OpenAICompatibleProvider,
+  OpenAIResponsesProvider,
   ProviderGateway,
   type ProviderJob,
 } from '@openmovie/provider-gateway';
@@ -783,6 +784,15 @@ export class CoreServer {
             baseUrl: command.params.baseUrl,
             apiKey: command.params.apiKey,
             imageGeneration: command.params.imageGeneration,
+          }),
+        );
+        return { id: command.id, ok: true, result: { id: command.params.id } };
+      case 'provider.configure_openai_responses':
+        this.providers.upsert(
+          new OpenAIResponsesProvider({
+            id: command.params.id,
+            baseUrl: command.params.baseUrl,
+            apiKey: command.params.apiKey,
           }),
         );
         return { id: command.id, ok: true, result: { id: command.params.id } };

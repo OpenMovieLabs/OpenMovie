@@ -508,19 +508,30 @@ void app
             .listProviderProfiles()
             .find((item) => item.id === plannerProviderId);
           if (!profile) throw new Error(`Provider profile not found: ${plannerProviderId}`);
-          if (profile.protocol !== 'openai_chat') {
-            throw new Error('This Direct Agent slice currently supports OpenAI Chat profiles');
+          if (
+            profile.protocol !== 'openai_chat' &&
+            profile.protocol !== 'openai_responses' &&
+            profile.protocol !== 'custom'
+          ) {
+            throw new Error('Direct Agent requires a Chat-compatible or Responses profile');
           }
           const apiKey = await secrets.get(profile.secretId);
-          await core?.request({
-            method: 'provider.configure_openai_compatible',
-            params: {
-              id: profile.id,
-              baseUrl: profile.baseUrl,
-              apiKey,
-              imageGeneration: false,
-            },
-          });
+          await core?.request(
+            profile.protocol === 'openai_responses'
+              ? {
+                  method: 'provider.configure_openai_responses',
+                  params: { id: profile.id, baseUrl: profile.baseUrl, apiKey },
+                }
+              : {
+                  method: 'provider.configure_openai_compatible',
+                  params: {
+                    id: profile.id,
+                    baseUrl: profile.baseUrl,
+                    apiKey,
+                    imageGeneration: false,
+                  },
+                },
+          );
           providerId = profile.id;
           model = profile.model;
         }
@@ -700,19 +711,29 @@ void app
           const profile = secrets
             .listProviderProfiles()
             .find((item) => item.id === providerProfileId);
-          if (!profile || profile.protocol !== 'openai_chat') {
-            throw new Error('Analysis requires an OpenAI-compatible Chat / Vision Provider');
+          if (
+            !profile ||
+            !['openai_chat', 'openai_responses', 'custom'].includes(profile.protocol)
+          ) {
+            throw new Error('Analysis requires a Chat-compatible or Responses Vision Provider');
           }
           const apiKey = await secrets.get(profile.secretId);
-          await core?.request({
-            method: 'provider.configure_openai_compatible',
-            params: {
-              id: profile.id,
-              baseUrl: profile.baseUrl,
-              apiKey,
-              imageGeneration: false,
-            },
-          });
+          await core?.request(
+            profile.protocol === 'openai_responses'
+              ? {
+                  method: 'provider.configure_openai_responses',
+                  params: { id: profile.id, baseUrl: profile.baseUrl, apiKey },
+                }
+              : {
+                  method: 'provider.configure_openai_compatible',
+                  params: {
+                    id: profile.id,
+                    baseUrl: profile.baseUrl,
+                    apiKey,
+                    imageGeneration: false,
+                  },
+                },
+          );
           providerId = profile.id;
           model = profile.model;
         }

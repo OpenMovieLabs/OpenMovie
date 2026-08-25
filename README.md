@@ -10,7 +10,7 @@ The project treats a movie like a software project:
 - Evaluations act as tests.
 - Agents propose patches instead of silently overwriting work.
 
-OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, another compatible harness, or its built-in agent using API providers such as OpenAI-compatible services, OpenRouter, custom multimodal APIs, and multiple video generation providers.
+OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, another compatible harness, or its built-in agent using API providers such as OpenAI-compatible Chat services, the OpenAI Responses protocol, OpenRouter, custom OpenAI-compatible multimodal endpoints, and multiple video generation providers.
 
 ## Status
 

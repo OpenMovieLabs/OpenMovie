@@ -1025,7 +1025,11 @@ export function App(): React.JSX.Element {
                       <option value="fake">Built-in deterministic Provider</option>
                       {providers
                         .filter(
-                          (provider) => provider.hasSecret && provider.protocol === 'openai_chat',
+                          (provider) =>
+                            provider.hasSecret &&
+                            ['openai_chat', 'openai_responses', 'custom'].includes(
+                              provider.protocol,
+                            ),
                         )
                         .map((provider) => (
                           <option key={provider.id} value={provider.id}>
@@ -1288,7 +1292,11 @@ export function App(): React.JSX.Element {
                   <option value="harness:codex">Local Codex Harness</option>
                 )}
                 {providers
-                  .filter((provider) => provider.hasSecret && provider.protocol === 'openai_chat')
+                  .filter(
+                    (provider) =>
+                      provider.hasSecret &&
+                      ['openai_chat', 'openai_responses', 'custom'].includes(provider.protocol),
+                  )
                   .map((provider) => (
                     <option key={provider.id} value={provider.id}>
                       {provider.label} · {provider.model}
@@ -1430,6 +1438,8 @@ export function App(): React.JSX.Element {
                   }
                 >
                   <option value="openai_chat">OpenAI-compatible Chat / Vision</option>
+                  <option value="openai_responses">OpenAI Responses / Vision</option>
+                  <option value="custom">Custom OpenAI Chat-compatible</option>
                   <option value="openai_images">OpenAI-compatible Images</option>
                   <option value="http_video_jobs">Async HTTP Video Jobs</option>
                 </select>

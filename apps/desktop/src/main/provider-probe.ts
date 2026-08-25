@@ -19,7 +19,7 @@ export async function probeProvider(
 ): Promise<ProviderProbe> {
   const startedAt = Date.now();
   const capabilities =
-    profile.protocol === 'openai_chat'
+    profile.protocol === 'openai_chat' || profile.protocol === 'custom'
       ? ['text.generate', 'image.understand']
       : profile.protocol === 'openai_responses'
         ? ['text.generate', 'image.understand']
@@ -32,6 +32,7 @@ export async function probeProvider(
     const base = profile.baseUrl.endsWith('/') ? profile.baseUrl : `${profile.baseUrl}/`;
     const isOpenAICompatible =
       profile.protocol === 'openai_chat' ||
+      profile.protocol === 'custom' ||
       profile.protocol === 'openai_responses' ||
       profile.protocol === 'openai_images';
     const endpoint = isOpenAICompatible ? new URL('models', base) : new URL(base);
