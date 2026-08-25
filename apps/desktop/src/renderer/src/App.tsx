@@ -22,6 +22,7 @@ import type {
   InitializeResult,
   ProjectSummary,
   RevisionRecord,
+  RevisionProposalRecord,
   RevisionDiff,
   Task,
   TakeRecord,
@@ -64,6 +65,7 @@ export function App(): React.JSX.Element {
   const [story, setStory] = useState<StoryDocuments | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [timelineRenders, setTimelineRenders] = useState<TimelineRenderRecord[]>([]);
+  const [proposals, setProposals] = useState<RevisionProposalRecord[]>([]);
   const [takesByShot, setTakesByShot] = useState<Record<string, TakeRecord[]>>({});
   const [evaluationsByTake, setEvaluationsByTake] = useState<Record<string, EvaluationRecord[]>>(
     {},
@@ -90,6 +92,7 @@ export function App(): React.JSX.Element {
   const [plannerProviderId, setPlannerProviderId] = useState('fake');
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [taskShotId, setTaskShotId] = useState('');
+  const [taskFeedbackId, setTaskFeedbackId] = useState<string | undefined>();
   const [taskMediaKind, setTaskMediaKind] = useState<'image' | 'video'>('image');
   const [mediaProviderId, setMediaProviderId] = useState('fake');
   const [analysisProviderId, setAnalysisProviderId] = useState('fake');
@@ -189,6 +192,7 @@ export function App(): React.JSX.Element {
       nextTimeline,
       nextTimelineRenders,
       nextProviders,
+      nextProposals,
     ] = await Promise.all([
       window.openMovie.listRevisions(),
       window.openMovie.listTasks(),
@@ -201,6 +205,7 @@ export function App(): React.JSX.Element {
       window.openMovie.getTimeline(),
       window.openMovie.listTimelineRenders(),
       window.openMovie.listProviders(),
+      window.openMovie.listProposals(),
     ]);
     setRevisions(nextRevisions);
     setBranches(nextBranches);
@@ -240,6 +245,7 @@ export function App(): React.JSX.Element {
     setTimeline(nextTimeline);
     setTimelineRenders(nextTimelineRenders);
     setProviders(nextProviders);
+    setProposals(nextProposals);
     setStoryPremise(nextStory.brief.premise);
     setStoryThemes(nextStory.bible.themes.join(', '));
     setStoryWorld(nextStory.bible.world);
@@ -378,7 +384,9 @@ export function App(): React.JSX.Element {
         taskShotId || undefined,
         taskMediaKind,
         mediaProviderId,
+        taskFeedbackId,
       );
+      setTaskFeedbackId(undefined);
       setLastTask(result.task);
       await loadProject(result.project);
       setShowTask(false);
@@ -435,6 +443,7 @@ export function App(): React.JSX.Element {
       setTaskShotId(shot.id);
       setTaskMediaKind(take.artifact.mimeType.startsWith('video/') ? 'video' : 'image');
       setMediaProviderId('fake');
+      setTaskFeedbackId(feedback.id);
       setShowTask(true);
     });
   };
@@ -443,6 +452,7 @@ export function App(): React.JSX.Element {
     void run(async () => {
       setProviders(await window.openMovie.listProviders());
       setTaskShotId((current) => current || (shots[0]?.id ?? ''));
+      setTaskFeedbackId(undefined);
       setShowTask(true);
     });
   };
@@ -471,6 +481,20 @@ export function App(): React.JSX.Element {
 
   const runDoctor = (deep = false): void => {
     void run(async () => setDoctorReport(await window.openMovie.runDoctor(deep)));
+  };
+
+  const acceptProposal = (proposalId: string): void => {
+    void run(async () => {
+      await window.openMovie.acceptProposal(proposalId);
+      await loadProject(await window.openMovie.getProjectSummary());
+    });
+  };
+
+  const rejectProposal = (proposalId: string): void => {
+    void run(async () => {
+      await window.openMovie.rejectProposal(proposalId);
+      setProposals(await window.openMovie.listProposals());
+    });
   };
 
   return (
@@ -582,6 +606,60 @@ export function App(): React.JSX.Element {
                     <button className="secondary" disabled={busy} onClick={cancelTask}>
                       Cancel task
                     </button>
+                  )}
+                  {proposals.filter((proposal) => proposal.status === 'pending').length > 0 && (
+                    <div className="proposal-list">
+                      <span className="section-label">AGENT PROPOSALS</span>
+                      {proposals
+                        .filter((proposal) => proposal.status === 'pending')
+                        .map((proposal) => (
+                          <div className="proposal-card" key={proposal.id}>
+                            <strong>{proposal.summary}</strong>
+                            <span>
+                              {proposal.plan.actions.length} structured action
+                              {proposal.plan.actions.length === 1 ? '' : 's'} · base{' '}
+                              {proposal.baseRevisionId.slice(-8)}
+                            </span>
+                            <ul>
+                              {proposal.plan.actions.map((action, index) => (
+                                <li key={`${action.type}-${index}`}>
+                                  <code>{action.type}</code>{' '}
+                                  {Object.entries(action)
+                                    .filter(([key]) => key !== 'type')
+                                    .map(
+                                      ([key, value]) =>
+                                        `${key}=${Array.isArray(value) ? value.join(', ') : String(value)}`,
+                                    )
+                                    .join(' · ')}
+                                </li>
+                              ))}
+                            </ul>
+                            {proposal.baseRevisionId !== project.currentRevisionId && (
+                              <em>
+                                The project changed; regenerate this proposal before applying.
+                              </em>
+                            )}
+                            <div className="proposal-actions">
+                              <button
+                                className="primary"
+                                disabled={
+                                  busy || proposal.baseRevisionId !== project.currentRevisionId
+                                }
+                                onClick={() => acceptProposal(proposal.id)}
+                              >
+                                Accept as Revision
+                              </button>
+                              <button
+                                className="secondary"
+                                disabled={busy}
+                                onClick={() => rejectProposal(proposal.id)}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
                   )}
                 </article>
                 <article className="history-panel">

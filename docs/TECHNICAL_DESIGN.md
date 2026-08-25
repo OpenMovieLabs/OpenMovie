@@ -179,6 +179,8 @@ SQLite 驱动封装在 Storage Port 后。若 better-sqlite3 无法通过目标 
 
 Current Cut Renderer 读取 Timeline 的选定 Take，检查其 Shot 归属和源 Revision，将图片/视频 Clip 逐段缩放、Letterbox、帧率归一化并编码为 H.264/yuv420p；视频源音频被统一为 AAC，静态图或无音轨视频补入等长静音，随后无重编码拼接。渲染通过可取消、可恢复 Task 执行，结果进入内容寻址对象库并保存 Render Record。
 
+Direct Agent 的文本输出不直接写文件。Core 只解析 `agentPlanSchema` 白名单动作，并把 Plan 与生成时的 Base Revision 存入 `revision_proposals`。Desktop 用户接受时再次执行乐观并发检查，先在内存中构造并验证所有目标文档，再通过单次 `commitFiles` 写为一个 Agent Revision；过期、未知实体或无实际改动的 Plan 均失败且不覆盖现有工作。
+
 ## 5. 推荐仓库结构
 
 ```text

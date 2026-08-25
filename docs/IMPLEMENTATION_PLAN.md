@@ -25,7 +25,7 @@ Desktop 启动
 
 每个后续阶段都保持这条主路径可运行。
 
-当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 H.264 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、Provider 无费用连通性检查、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
+当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 H.264 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、Provider 无费用连通性检查、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、Direct Agent 受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
 
 ## 2. 工程约束
 
@@ -187,6 +187,8 @@ tests
 - shot.propose_patch。
 - image.generate。
 - revision.propose。
+
+当前实现要求模型返回 `OPENMOVIE_PLAN_V1` JSON，只允许 Story 更新、Scene 创建、Shot 创建和 Shot 更新四类 Schema 动作。Core 将有效动作保存为绑定 Base Revision 的待审 Proposal；Desktop 展示字段级动作，用户接受后一次性提交原子 Agent Revision，拒绝不修改 Movie IR。项目头变化后旧 Proposal 不可应用；由 Feedback 发起的 Proposal 接受成功时自动记录解决它的 Revision。
 
 ### 6.5 Exit Criteria
 

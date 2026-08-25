@@ -8,6 +8,7 @@ import type {
   InitializeResult,
   ProjectSummary,
   RevisionRecord,
+  RevisionProposalRecord,
   RevisionDiff,
   Task,
   TaskEvent,
@@ -76,6 +77,9 @@ export type OpenMovieDesktopApi = {
   ) => Promise<FeedbackRecord>;
   listAnalyses: (takeId: string) => Promise<AnalysisRecord[]>;
   analyzeTake: (takeId: string, providerId: string, prompt: string) => Promise<Task>;
+  listProposals: () => Promise<RevisionProposalRecord[]>;
+  acceptProposal: (proposalId: string) => Promise<RevisionProposalRecord>;
+  rejectProposal: (proposalId: string) => Promise<RevisionProposalRecord>;
   runTask: (
     goal: string,
     plannerProviderId?: string,
@@ -83,6 +87,7 @@ export type OpenMovieDesktopApi = {
     targetShotId?: string,
     mediaKind?: 'image' | 'video',
     mediaProviderId?: string,
+    feedbackId?: string,
   ) => Promise<TaskRunResult>;
   listTasks: () => Promise<Task[]>;
   cancelTask: (taskId: string) => Promise<Task>;
@@ -236,7 +241,21 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:analysis-list', takeId) as Promise<AnalysisRecord[]>,
   analyzeTake: (takeId, providerId, prompt) =>
     ipcRenderer.invoke('openmovie:analysis-run', takeId, providerId, prompt) as Promise<Task>,
-  runTask: (goal, plannerProviderId, requiresApproval, targetShotId, mediaKind, mediaProviderId) =>
+  listProposals: () =>
+    ipcRenderer.invoke('openmovie:proposal-list') as Promise<RevisionProposalRecord[]>,
+  acceptProposal: (proposalId) =>
+    ipcRenderer.invoke('openmovie:proposal-accept', proposalId) as Promise<RevisionProposalRecord>,
+  rejectProposal: (proposalId) =>
+    ipcRenderer.invoke('openmovie:proposal-reject', proposalId) as Promise<RevisionProposalRecord>,
+  runTask: (
+    goal,
+    plannerProviderId,
+    requiresApproval,
+    targetShotId,
+    mediaKind,
+    mediaProviderId,
+    feedbackId,
+  ) =>
     ipcRenderer.invoke(
       'openmovie:task-run',
       goal,
@@ -245,6 +264,7 @@ const api: OpenMovieDesktopApi = {
       targetShotId,
       mediaKind,
       mediaProviderId,
+      feedbackId,
     ) as Promise<TaskRunResult>,
   listTasks: () => ipcRenderer.invoke('openmovie:task-list') as Promise<Task[]>,
   cancelTask: (taskId) => ipcRenderer.invoke('openmovie:task-cancel', taskId) as Promise<Task>,

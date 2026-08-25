@@ -1,6 +1,7 @@
 export * from './errors.js';
 export * from './doctor.js';
 export * from './feedback-repository.js';
+export * from './proposal-repository.js';
 export * from './fs.js';
 export * from './lock.js';
 export * from './media-repository.js';

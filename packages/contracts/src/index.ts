@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { agentPlanSchema } from '@openmovie/movie-ir';
 
 export const PROTOCOL_VERSION = '0.1.0' as const;
 export const CORE_API_VERSION = '0.1.0' as const;
@@ -277,6 +278,24 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('proposal.list'),
+    params: z.object({ status: z.enum(['pending', 'accepted', 'rejected']).optional() }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('proposal.accept'),
+    params: z.object({
+      proposalId: z.string().min(1),
+      expectedRevisionId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('proposal.reject'),
+    params: z.object({ proposalId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('task.create'),
     params: z.object({
       goal: z.string().trim().min(1).max(10_000),
@@ -287,6 +306,7 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
       mediaKind: z.enum(['image', 'video']).default('image'),
       mediaProviderId: z.string().min(1).default('fake'),
       mediaModel: z.string().min(1),
+      feedbackId: z.string().min(1).optional(),
     }),
   }),
   z.object({
@@ -515,6 +535,19 @@ export const timelineRenderRecordSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const revisionProposalRecordSchema = z.object({
+  id: z.string(),
+  baseRevisionId: z.string(),
+  status: z.enum(['pending', 'accepted', 'rejected']),
+  summary: z.string(),
+  plan: agentPlanSchema,
+  authorId: z.string(),
+  feedbackId: z.string().optional(),
+  acceptedRevisionId: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
 export const taskStepSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -596,6 +629,7 @@ export type EvaluationRecord = z.infer<typeof evaluationRecordSchema>;
 export type FeedbackRecord = z.infer<typeof feedbackRecordSchema>;
 export type AnalysisRecord = z.infer<typeof analysisRecordSchema>;
 export type TimelineRenderRecord = z.infer<typeof timelineRenderRecordSchema>;
+export type RevisionProposalRecord = z.infer<typeof revisionProposalRecordSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEvent = z.infer<typeof taskEventSchema>;
 export type HarnessHealth = z.infer<typeof harnessHealthSchema>;

@@ -262,5 +262,17 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
     ({ takeId }) => Promise.resolve(result({ analyses: project.media.listAnalyses(takeId) })),
   );
 
+  server.registerTool(
+    'proposal_list',
+    {
+      description:
+        'List reviewable Direct Agent Movie IR proposals without applying them. Acceptance remains a user-controlled desktop action.',
+      inputSchema: z.object({
+        status: z.enum(['pending', 'accepted', 'rejected']).optional(),
+      }),
+    },
+    ({ status }) => Promise.resolve(result({ proposals: project.proposals.list(status) })),
+  );
+
   return server;
 }

@@ -14,7 +14,7 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 ## Status
 
-Active implementation. The desktop vertical slice now covers portable Movie IR projects, Brief/Story Bible editing, Scene/Shot authoring, deterministic Timeline assembly and MP4 Current Cut rendering, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers with credential-safe connection tests, asynchronous video-provider jobs, immutable image/video Takes, multimodal Take analysis, deterministic evaluations, structured feedback, Take selection, structured diffs, and creative branches.
+Active implementation. The desktop vertical slice now covers portable Movie IR projects, Brief/Story Bible editing, Scene/Shot authoring, deterministic Timeline assembly and MP4 Current Cut rendering, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers with credential-safe connection tests, asynchronous video-provider jobs, immutable image/video Takes, multimodal Take analysis, deterministic evaluations, structured feedback, reviewable Direct Agent proposals, Take selection, structured diffs, and creative branches.
 
 ## Documentation
 
@@ -83,7 +83,7 @@ For external Codex, Claude Code, or any MCP host, start the standalone stdio ser
 pnpm mcp --project /absolute/path/to/MyMovie
 ```
 
-The MCP server exposes project/entity reads, Story editing, Timeline assembly and render inspection, Take/evaluation/analysis/feedback inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. It never exposes Provider API keys.
+The MCP server exposes project/entity reads, Story editing, Timeline assembly and render inspection, Take/evaluation/analysis/feedback/proposal inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. Proposal acceptance remains an explicit Desktop action, and the server never exposes Provider API keys.
 
 ## Repository
 

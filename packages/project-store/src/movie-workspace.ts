@@ -16,6 +16,7 @@ import {
   stringifyYaml,
   timelineSchema,
   type Brief,
+  type AgentPlan,
   type Character,
   type MovieEntity,
   type Scene,
@@ -146,6 +147,170 @@ export class MovieWorkspace {
       changes: [{ path: 'timeline/main.yaml', content: stringifyYaml(timeline) }],
     });
     return { timeline, revision };
+  }
+
+  async applyAgentPlan(input: {
+    plan: AgentPlan;
+    expectedRevisionId: string;
+    authorId: string;
+  }): Promise<{ revision: RevisionRecord; affectedEntities: string[] }> {
+    const changes = new Map<string, string>();
+    const affected = new Set<string>();
+    const story = await this.getStory();
+    let brief = story.brief;
+    let bible = story.bible;
+    let screenplay = story.screenplay;
+    let storyChanged = false;
+    let screenplayChanged = false;
+    const scenes = new Map(
+      ((await this.list('scene')) as Scene[]).map((scene) => [scene.id, scene]),
+    );
+    const shots = new Map(((await this.list('shot')) as Shot[]).map((shot) => [shot.id, shot]));
+    const baseSceneRevisions = new Map([...scenes].map(([id, scene]) => [id, scene.revision]));
+    const baseShotRevisions = new Map([...shots].map(([id, shot]) => [id, shot.revision]));
+    let lastSceneId: string | undefined;
+
+    for (const action of input.plan.actions) {
+      if (action.type === 'story.update') {
+        if (action.premise !== undefined)
+          brief = briefSchema.parse({ ...brief, premise: action.premise });
+        bible = storyBibleSchema.parse({
+          ...bible,
+          ...(action.themes === undefined ? {} : { themes: action.themes }),
+          ...(action.world === undefined ? {} : { world: action.world }),
+          ...(action.rules === undefined ? {} : { rules: action.rules }),
+        });
+        storyChanged ||=
+          action.premise !== undefined ||
+          action.themes !== undefined ||
+          action.world !== undefined ||
+          action.rules !== undefined;
+        continue;
+      }
+      if (action.type === 'scene.create') {
+        const now = new Date().toISOString();
+        const scene = sceneSchema.parse({
+          schema_version: 0,
+          id: createId('scene'),
+          type: 'scene',
+          revision: 0,
+          created_at: now,
+          updated_at: now,
+          title: action.title,
+          order:
+            [...scenes.values()].reduce(
+              (maximum, current) => Math.max(maximum, current.order),
+              -1,
+            ) + 1,
+          story_goal: action.story_goal,
+          characters: [],
+          shots: [],
+          constraints: [],
+          extensions: {},
+        });
+        scenes.set(scene.id, scene);
+        baseSceneRevisions.set(scene.id, scene.revision);
+        lastSceneId = scene.id;
+        screenplay = screenplaySchema.parse({
+          ...screenplay,
+          scenes: [...screenplay.scenes, scene.id],
+        });
+        screenplayChanged = true;
+        changes.set(entityPath(scene), stringifyYaml(scene));
+        affected.add(scene.id);
+        continue;
+      }
+      if (action.type === 'shot.create') {
+        const sceneId = action.scene_id === '@last_scene' ? lastSceneId : action.scene_id;
+        if (!sceneId) throw new Error('shot.create requires a Scene or a preceding scene.create');
+        const scene = scenes.get(sceneId);
+        if (!scene) throw new Error(`Scene not found for Agent action: ${sceneId}`);
+        const now = new Date().toISOString();
+        const shot = shotSchema.parse({
+          schema_version: 0,
+          id: createId('shot'),
+          type: 'shot',
+          revision: 0,
+          created_at: now,
+          updated_at: now,
+          scene: scene.id,
+          order:
+            scene.shots.reduce(
+              (maximum, shotId) => Math.max(maximum, shots.get(shotId)?.order ?? -1),
+              -1,
+            ) + 1,
+          duration_us: action.duration_us,
+          characters: [],
+          camera: {
+            ...(action.framing ? { framing: action.framing } : {}),
+            ...(action.movement ? { movement: action.movement } : {}),
+          },
+          performance: {},
+          dialogue: null,
+          constraints: [],
+          generation: {
+            strategy: 'balanced',
+            preferred_mode: 'text_to_video',
+            references: [],
+            provider_override: null,
+          },
+          selected_take: null,
+          extensions: {},
+        });
+        const updatedScene = sceneSchema.parse({
+          ...scene,
+          revision: (baseSceneRevisions.get(scene.id) ?? scene.revision) + 1,
+          updated_at: now,
+          shots: [...scene.shots, shot.id],
+        });
+        scenes.set(scene.id, updatedScene);
+        shots.set(shot.id, shot);
+        baseShotRevisions.set(shot.id, shot.revision);
+        changes.set(entityPath(updatedScene), stringifyYaml(updatedScene));
+        changes.set(entityPath(shot), stringifyYaml(shot));
+        affected.add(scene.id);
+        affected.add(shot.id);
+        continue;
+      }
+      const shot = shots.get(action.shot_id);
+      if (!shot) throw new Error(`Shot not found for Agent action: ${action.shot_id}`);
+      const updated = shotSchema.parse({
+        ...shot,
+        revision: (baseShotRevisions.get(action.shot_id) ?? shot.revision) + 1,
+        updated_at: new Date().toISOString(),
+        ...(action.duration_us === undefined ? {} : { duration_us: action.duration_us }),
+        camera: {
+          ...shot.camera,
+          ...(action.framing === undefined ? {} : { framing: action.framing }),
+          ...(action.movement === undefined ? {} : { movement: action.movement }),
+        },
+        performance: {
+          ...shot.performance,
+          ...(action.performance_emotion === undefined
+            ? {}
+            : { emotion: action.performance_emotion }),
+        },
+      });
+      shots.set(updated.id, updated);
+      changes.set(entityPath(updated), stringifyYaml(updated));
+      affected.add(updated.id);
+    }
+
+    if (storyChanged) {
+      changes.set('brief.yaml', stringifyYaml(brief));
+      changes.set('story/bible.yaml', stringifyYaml(bible));
+      affected.add('story');
+    }
+    if (screenplayChanged) changes.set('story/screenplay.yaml', stringifyYaml(screenplay));
+    if (changes.size === 0) throw new Error('Agent Proposal contains no applicable actions');
+    const revision = await this.revisions.commitFiles({
+      expectedRevisionId: input.expectedRevisionId,
+      authorType: 'agent',
+      authorId: input.authorId,
+      message: input.plan.summary,
+      changes: [...changes].map(([path, content]) => ({ path, content })),
+    });
+    return { revision, affectedEntities: [...affected] };
   }
 
   async createCharacter(input: {

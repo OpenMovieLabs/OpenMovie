@@ -177,6 +177,41 @@ export const assetManifestSchema = z.object({
   ),
 });
 
+export const agentActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('story.update'),
+    premise: z.string().max(20_000).optional(),
+    themes: z.array(z.string().max(200)).max(100).optional(),
+    world: z.string().max(20_000).optional(),
+    rules: z.array(z.string().max(500)).max(200).optional(),
+  }),
+  z.object({
+    type: z.literal('scene.create'),
+    title: z.string().trim().min(1).max(200),
+    story_goal: z.string().max(10_000).default(''),
+  }),
+  z.object({
+    type: z.literal('shot.create'),
+    scene_id: z.string().min(1),
+    duration_us: z.number().int().positive(),
+    framing: z.string().max(200).optional(),
+    movement: z.string().max(200).optional(),
+  }),
+  z.object({
+    type: z.literal('shot.update'),
+    shot_id: entityIdSchema,
+    duration_us: z.number().int().positive().optional(),
+    framing: z.string().max(200).optional(),
+    movement: z.string().max(200).optional(),
+    performance_emotion: z.string().max(500).optional(),
+  }),
+]);
+
+export const agentPlanSchema = z.object({
+  summary: z.string().trim().min(1).max(500),
+  actions: z.array(agentActionSchema).max(50),
+});
+
 export const movieEntitySchema = z.discriminatedUnion('type', [
   characterSchema,
   sceneSchema,
@@ -194,3 +229,5 @@ export type Scene = z.infer<typeof sceneSchema>;
 export type Shot = z.infer<typeof shotSchema>;
 export type Timeline = z.infer<typeof timelineSchema>;
 export type AssetManifest = z.infer<typeof assetManifestSchema>;
+export type AgentAction = z.infer<typeof agentActionSchema>;
+export type AgentPlan = z.infer<typeof agentPlanSchema>;

@@ -199,6 +199,9 @@ importers:
 
   packages/contracts:
     dependencies:
+      '@openmovie/movie-ir':
+        specifier: workspace:*
+        version: link:../movie-ir
       zod:
         specifier: 4.4.3
         version: 4.4.3

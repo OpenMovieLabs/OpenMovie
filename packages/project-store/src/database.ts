@@ -200,6 +200,25 @@ const migrations = [
         ON timeline_renders(created_at DESC);
     `,
   },
+  {
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS revision_proposals (
+        id TEXT PRIMARY KEY,
+        base_revision_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'rejected')),
+        summary TEXT NOT NULL,
+        plan_json TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        feedback_id TEXT,
+        accepted_revision_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS revision_proposals_status_created
+        ON revision_proposals(status, created_at DESC);
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

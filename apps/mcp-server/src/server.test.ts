@@ -23,6 +23,7 @@ describe('OpenMovie MCP Server', () => {
     expect(tools.tools.map((tool) => tool.name)).toContain('feedback_create');
     expect(tools.tools.map((tool) => tool.name)).toContain('timeline_assemble');
     expect(tools.tools.map((tool) => tool.name)).toContain('timeline_render_list');
+    expect(tools.tools.map((tool) => tool.name)).toContain('proposal_list');
 
     const summary = await client.callTool({ name: 'project_summary', arguments: {} });
     expect(summary.structuredContent).toMatchObject({ title: 'MCP Movie', currentBranch: 'main' });

@@ -17,6 +17,7 @@ import {
   projectSummarySchema,
   revisionRecordSchema,
   revisionDiffSchema,
+  revisionProposalRecordSchema,
   taskSchema,
   taskEventSchema,
   takeRecordSchema,
@@ -492,6 +493,7 @@ void app
         targetShotId: unknown,
         mediaKind: unknown,
         mediaProviderId: unknown,
+        feedbackId: unknown,
       ) => {
         if (typeof goal !== 'string' || goal.trim().length === 0)
           throw new Error('Task goal is required');
@@ -570,6 +572,7 @@ void app
               mediaProviderId: selectedMediaProviderId,
               mediaModel: selectedMediaModel,
               ...(typeof targetShotId === 'string' && targetShotId ? { targetShotId } : {}),
+              ...(typeof feedbackId === 'string' && feedbackId ? { feedbackId } : {}),
             },
           }),
         );
@@ -729,6 +732,30 @@ void app
         return task;
       },
     );
+    ipcMain.handle('openmovie:proposal-list', async () =>
+      revisionProposalRecordSchema
+        .array()
+        .parse(await core?.request({ method: 'proposal.list', params: {} })),
+    );
+    ipcMain.handle('openmovie:proposal-accept', async (_event, proposalId: unknown) => {
+      if (typeof proposalId !== 'string') throw new Error('Proposal ID is required');
+      const summary = projectSummarySchema.parse(
+        await core?.request({ method: 'project.get_summary', params: {} }),
+      );
+      if (!summary.currentRevisionId) throw new Error('Project has no current Revision');
+      return revisionProposalRecordSchema.parse(
+        await core?.request({
+          method: 'proposal.accept',
+          params: { proposalId, expectedRevisionId: summary.currentRevisionId },
+        }),
+      );
+    });
+    ipcMain.handle('openmovie:proposal-reject', async (_event, proposalId: unknown) => {
+      if (typeof proposalId !== 'string') throw new Error('Proposal ID is required');
+      return revisionProposalRecordSchema.parse(
+        await core?.request({ method: 'proposal.reject', params: { proposalId } }),
+      );
+    });
     ipcMain.handle('openmovie:task-list', async () =>
       taskSchema.array().parse(await core?.request({ method: 'task.list', params: {} })),
     );

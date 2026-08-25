@@ -24,6 +24,7 @@ import { ProjectLock } from './lock.js';
 import { MediaRepository } from './media-repository.js';
 import { MovieWorkspace } from './movie-workspace.js';
 import { ObjectStore } from './object-store.js';
+import { ProposalRepository } from './proposal-repository.js';
 import { RevisionEngine } from './revision.js';
 import { SqliteTaskPersistence } from './task-persistence.js';
 
@@ -50,6 +51,7 @@ export class ProjectStore {
   readonly media: MediaRepository;
   readonly doctor: ProjectDoctor;
   readonly feedback: FeedbackRepository;
+  readonly proposals: ProposalRepository;
 
   private closed = false;
 
@@ -68,6 +70,7 @@ export class ProjectStore {
     this.media = new MediaRepository(database, this.movies);
     this.doctor = new ProjectDoctor(root, manifest, database, this.objects, this.revisions);
     this.feedback = new FeedbackRepository(database, this.movies);
+    this.proposals = new ProposalRepository(database, this.movies, this.revisions, this.feedback);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {

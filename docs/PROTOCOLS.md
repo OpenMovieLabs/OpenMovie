@@ -387,8 +387,11 @@ Tool 名称采用 namespace.action，例如 shot.get、shot.propose_patch。
 - timeline_render_list
 - take_list、evaluation_list、analysis_list
 - feedback_list、feedback_create
+- proposal_list（只读；接受/拒绝由 Desktop 用户操作）
 
 所有创建命令要求 expectedRevisionId，写入形成完整 Movie IR 文件树 Revision。Desktop 内 Dynamic Tool 由当前 Core 直接执行；独立 MCP Server 获取项目写锁，因此不会与 Desktop 形成双写入口。
+
+Core IPC 另实现 `proposal.list`、`proposal.accept` 和 `proposal.reject`。Proposal 携带经过 `agentPlanSchema` 验证的受限动作、Base Revision、状态和可选 Feedback ID；`proposal.accept` 必须同时匹配当前 Revision，成功后只产生一个 Agent Revision。
 
 ## 14. Tool Call
 

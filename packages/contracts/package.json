@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@openmovie/movie-ir": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {

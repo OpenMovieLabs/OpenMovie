@@ -23,7 +23,7 @@ import {
   type DynamicToolSpec,
 } from '@openmovie/agent-gateway';
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
-import { movieEntitySchema } from '@openmovie/movie-ir';
+import { agentPlanSchema, movieEntitySchema, type AgentPlan } from '@openmovie/movie-ir';
 import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
 import { FfmpegFrameExtractor, FfmpegTimelineRenderer } from '@openmovie/media-engine';
 import type { StoredObject, TakeRecord } from '@openmovie/project-store';
@@ -74,18 +74,54 @@ export class CoreServer {
       }
       const provider = this.providers.get(providerId);
       if (!provider.generateText) throw new Error(`Provider cannot generate text: ${providerId}`);
+      const project = this.requireProject();
+      let targetContext = '';
+      if (typeof input.targetShotId === 'string') {
+        const shot = await project.movies.read('shot', input.targetShotId);
+        targetContext = `\n\nTarget Shot JSON:\n${JSON.stringify(shot)}`;
+      }
       return provider.generateText({
         model: typeof input.model === 'string' ? input.model : 'fake-text-v1',
         messages: [
           {
             role: 'system',
             content:
-              'You are OpenMovie Direct Agent. Return a concise visual plan for the requested movie frame.',
+              'OPENMOVIE_PLAN_V1. You are OpenMovie Direct Agent. Return only one JSON object with summary and actions. Allowed actions: story.update; scene.create; shot.create (scene_id may be @last_scene); shot.update. Use snake_case fields defined by the action names. Use actions: [] when no Movie IR change is needed. Never include markdown fences.',
           },
-          { role: 'user', content: context.task.goal },
+          {
+            role: 'user',
+            content: `${context.task.goal}${targetContext}`,
+          },
         ],
         signal: context.signal,
       });
+    });
+    tasks.registerStep('proposal.create_from_plan', (input, context) => {
+      const project = this.requireProject();
+      if (typeof input.baseRevisionId !== 'string') throw new Error('Proposal base is required');
+      const planner = context.task.steps.find((step) => step.kind === 'text.generate');
+      const text =
+        typeof planner?.output === 'object' &&
+        planner.output !== null &&
+        'text' in planner.output &&
+        typeof planner.output.text === 'string'
+          ? planner.output.text
+          : '';
+      const plan = parseAgentPlanText(text);
+      if (!plan || plan.actions.length === 0) {
+        return Promise.resolve({
+          proposal: null,
+          summary: plan?.summary ?? (text || 'No structured change proposed'),
+        });
+      }
+      return Promise.resolve(
+        project.proposals.create({
+          baseRevisionId: input.baseRevisionId,
+          plan,
+          authorId: 'direct_agent',
+          ...(typeof input.feedbackId === 'string' ? { feedbackId: input.feedbackId } : {}),
+        }),
+      );
     });
     tasks.registerStep('image.generate', async (input, context) => {
       const project = this.requireProject();
@@ -409,6 +445,7 @@ export class CoreServer {
               'take.manage',
               'evaluation.read',
               'feedback.manage',
+              'proposal.review',
               'media.analyze',
               'task.run',
               'task.approve',
@@ -643,8 +680,31 @@ export class CoreServer {
           ok: true,
           result: this.requireProject().media.listAnalyses(command.params.takeId),
         };
+      case 'proposal.list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().proposals.list(command.params.status),
+        };
+      case 'proposal.accept':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().proposals.accept(
+            command.params.proposalId,
+            command.params.expectedRevisionId,
+          ),
+        };
+      case 'proposal.reject':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().proposals.reject(command.params.proposalId),
+        };
       case 'task.create': {
         const project = this.requireProject();
+        const baseRevisionId = project.revisions.currentRevisionId();
+        if (!baseRevisionId) throw new Error('Project has no current Revision');
         let durationSeconds = 4;
         if (command.params.targetShotId) {
           const target = movieEntitySchema.parse(
@@ -662,6 +722,17 @@ export class CoreServer {
               input: {
                 providerId: command.params.plannerProviderId,
                 model: command.params.plannerModel,
+                ...(command.params.targetShotId
+                  ? { targetShotId: command.params.targetShotId }
+                  : {}),
+              },
+            },
+            {
+              kind: 'proposal.create_from_plan',
+              title: 'Prepare reviewable Movie IR actions',
+              input: {
+                baseRevisionId,
+                ...(command.params.feedbackId ? { feedbackId: command.params.feedbackId } : {}),
               },
             },
             {
@@ -922,4 +993,23 @@ export class CoreServer {
       },
     };
   }
+}
+
+function parseAgentPlanText(text: string): AgentPlan | null {
+  const trimmed = text.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1];
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  const embedded =
+    firstBrace >= 0 && lastBrace > firstBrace ? trimmed.slice(firstBrace, lastBrace + 1) : '';
+  for (const candidate of [trimmed, fenced, embedded]) {
+    if (!candidate) continue;
+    try {
+      const parsed = agentPlanSchema.safeParse(JSON.parse(candidate));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // Try the next safe JSON candidate.
+    }
+  }
+  return null;
 }

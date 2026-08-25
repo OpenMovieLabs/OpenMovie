@@ -276,4 +276,93 @@ describe('ProjectStore', () => {
     });
     await project.close();
   });
+
+  it('reviews and atomically applies Direct Agent proposals as Movie Revisions', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-proposals-'));
+    const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Proposals' });
+    const scene = await project.movies.createScene({
+      title: 'Opening',
+      expectedRevisionId: project.revisions.currentRevisionId(),
+      authorId: 'user_local',
+    });
+    const shot = await project.movies.createShot({
+      sceneId: scene.entity.id,
+      durationUs: 2_000_000,
+      framing: 'wide',
+      expectedRevisionId: scene.revision.id,
+      authorId: 'user_local',
+    });
+    const feedback = await project.feedback.create({
+      targetType: 'shot',
+      targetId: shot.entity.id,
+      body: 'Move closer and emphasize uncertainty',
+      authorId: 'reviewer_local',
+    });
+    const proposal = project.proposals.create({
+      baseRevisionId: shot.revision.id,
+      authorId: 'direct_agent',
+      feedbackId: feedback.id,
+      plan: {
+        summary: 'Tighten the opening performance',
+        actions: [
+          {
+            type: 'shot.update',
+            shot_id: shot.entity.id,
+            framing: 'medium close-up',
+            performance_emotion: 'uncertain',
+          },
+        ],
+      },
+    });
+
+    const accepted = await project.proposals.accept(proposal.id, shot.revision.id);
+    const updated = await project.movies.read('shot', shot.entity.id);
+    expect(accepted).toMatchObject({
+      status: 'accepted',
+      baseRevisionId: shot.revision.id,
+      acceptedRevisionId: project.revisions.currentRevisionId(),
+    });
+    expect(updated).toMatchObject({
+      type: 'shot',
+      camera: { framing: 'medium close-up' },
+      performance: { emotion: 'uncertain' },
+    });
+    expect(project.feedback.list({ targetId: shot.entity.id })[0]).toMatchObject({
+      id: feedback.id,
+      status: 'resolved',
+      resolutionRevisionId: accepted.acceptedRevisionId,
+    });
+    expect(project.revisions.list()[0]).toMatchObject({
+      id: accepted.acceptedRevisionId,
+      authorType: 'agent',
+      message: 'Tighten the opening performance',
+    });
+    await project.close();
+  });
+
+  it('refuses stale Direct Agent proposals after the project head changes', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-stale-proposal-'));
+    const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Stale Proposal' });
+    const baseRevisionId = project.revisions.currentRevisionId();
+    if (!baseRevisionId) throw new Error('Expected initial Revision');
+    const proposal = project.proposals.create({
+      baseRevisionId,
+      authorId: 'direct_agent',
+      plan: {
+        summary: 'Update the story world',
+        actions: [{ type: 'story.update', world: 'A distant ocean colony' }],
+      },
+    });
+    const scene = await project.movies.createScene({
+      title: 'Concurrent edit',
+      expectedRevisionId: baseRevisionId,
+      authorId: 'user_local',
+    });
+
+    await expect(project.proposals.accept(proposal.id, scene.revision.id)).rejects.toThrow(
+      /does not target the expected Revision/,
+    );
+    expect(project.proposals.list('pending')[0]?.id).toBe(proposal.id);
+    await project.close();
+  });
 });

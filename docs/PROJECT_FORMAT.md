@@ -392,10 +392,13 @@ takes
 evaluations
 analyses
 timeline_renders
+revision_proposals
 feedback
 events
 schema_migrations
 ```
+
+`revision_proposals` 是可丢弃的运行状态，不属于 Movie IR 真源。它保存经过 Schema 验证的 Direct Agent Plan、Base Revision、审阅状态、可选 Feedback 关联和接受后 Revision ID。Proposal 只能在 Base Revision 仍为当前项目头时被接受，全部动作在一个 Movie IR Revision 中原子提交。
 
 具体 DDL 由首次实现迁移生成，但必须遵守：
 
