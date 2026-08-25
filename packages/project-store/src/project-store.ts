@@ -4,10 +4,13 @@ import { join, resolve } from 'node:path';
 
 import {
   SCHEMA_VERSION,
+  briefSchema,
   createId,
   createProjectManifest,
   parseProjectManifest,
   serializeProjectManifest,
+  screenplaySchema,
+  storyBibleSchema,
   stringifyYaml,
   type ProjectManifest,
 } from '@openmovie/movie-ir';
@@ -15,6 +18,7 @@ import type Database from 'better-sqlite3';
 
 import { openProjectDatabase } from './database.js';
 import { writeFileAtomic } from './fs.js';
+import { FeedbackRepository } from './feedback-repository.js';
 import { ProjectDoctor } from './doctor.js';
 import { ProjectLock } from './lock.js';
 import { MediaRepository } from './media-repository.js';
@@ -45,6 +49,7 @@ export class ProjectStore {
   readonly movies: MovieWorkspace;
   readonly media: MediaRepository;
   readonly doctor: ProjectDoctor;
+  readonly feedback: FeedbackRepository;
 
   private closed = false;
 
@@ -62,6 +67,7 @@ export class ProjectStore {
     this.movies = new MovieWorkspace(root, this.revisions);
     this.media = new MediaRepository(database, this.movies);
     this.doctor = new ProjectDoctor(root, manifest, database, this.objects, this.revisions);
+    this.feedback = new FeedbackRepository(database, this.movies);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {
@@ -103,15 +109,21 @@ export class ProjectStore {
         writeFileAtomic(join(root, 'openmovie.yaml'), manifestYaml),
         writeFileAtomic(
           join(root, 'brief.yaml'),
-          stringifyYaml({ schema_version: SCHEMA_VERSION, title: options.title, premise: '' }),
+          stringifyYaml(
+            briefSchema.parse({
+              schema_version: SCHEMA_VERSION,
+              title: options.title,
+              premise: '',
+            }),
+          ),
         ),
         writeFileAtomic(
           join(root, 'story', 'bible.yaml'),
-          stringifyYaml({ schema_version: SCHEMA_VERSION, themes: [], world: '', rules: [] }),
+          stringifyYaml(storyBibleSchema.parse({ schema_version: SCHEMA_VERSION })),
         ),
         writeFileAtomic(
           join(root, 'story', 'screenplay.yaml'),
-          stringifyYaml({ schema_version: SCHEMA_VERSION, scenes: [] }),
+          stringifyYaml(screenplaySchema.parse({ schema_version: SCHEMA_VERSION })),
         ),
         writeFileAtomic(
           join(root, 'timeline', 'main.yaml'),

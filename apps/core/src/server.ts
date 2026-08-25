@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import {
   CORE_API_VERSION,
   PROTOCOL_VERSION,
@@ -22,6 +25,7 @@ import {
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { movieEntitySchema } from '@openmovie/movie-ir';
 import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
+import { FfmpegFrameExtractor } from '@openmovie/media-engine';
 import type { StoredObject, TakeRecord } from '@openmovie/project-store';
 import packageMetadata from '../package.json' with { type: 'json' };
 
@@ -39,6 +43,7 @@ export class CoreServer {
   private readonly codex = new CodexAppServerAdapter();
   private readonly claude = new ClaudeCodeDetector();
   private readonly evaluations = new EvaluationEngine();
+  private readonly frames = new FfmpegFrameExtractor();
 
   constructor() {
     const fake = new FakeProvider();
@@ -191,6 +196,90 @@ export class CoreServer {
         evaluation: await this.evaluateTake(project, input.shotId, take, object),
       };
     });
+    tasks.registerStep('media.analyze', async (input, context) => {
+      const project = this.requireProject();
+      if (typeof input.takeId !== 'string') throw new Error('Take ID is required');
+      const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      const model = typeof input.model === 'string' ? input.model : 'fake-vision-v1';
+      const prompt = typeof input.prompt === 'string' ? input.prompt : context.task.goal;
+      const take = project.media.getTake(input.takeId);
+      const provider = this.providers.get(providerId);
+      if (!provider.understandImage) {
+        throw new Error(`Provider cannot understand images: ${providerId}`);
+      }
+      const objectPath = project.objects.resolveUri(take.artifact.objectUri);
+      if (take.artifact.mimeType.startsWith('image/')) {
+        if (take.artifact.byteSize > 25 * 1024 * 1024) {
+          throw new Error('Image analysis input exceeds the 25 MiB local limit');
+        }
+        const bytes = await readFile(objectPath);
+        const result = await provider.understandImage({
+          model,
+          prompt,
+          imageUrl: `data:${take.artifact.mimeType};base64,${bytes.toString('base64')}`,
+          mimeType: take.artifact.mimeType,
+          signal: context.signal,
+        });
+        return project.media.recordAnalysis({
+          takeId: take.id,
+          kind: 'image',
+          providerId,
+          modelId: result.model,
+          summary: result.text,
+          evidence: result.evidence,
+          provenance: { frameCount: 1, finishReason: result.finishReason },
+        });
+      }
+      if (!take.artifact.mimeType.startsWith('video/')) {
+        throw new Error(`Unsupported analysis MIME type: ${take.artifact.mimeType}`);
+      }
+      const availability = await this.frames.detect();
+      if (!availability.available) {
+        throw new Error(
+          'Video analysis requires FFmpeg. Install ffmpeg or set OPENMOVIE_FFMPEG_PATH.',
+        );
+      }
+      const shot = movieEntitySchema.parse(await project.movies.read('shot', take.shotId));
+      if (shot.type !== 'shot') throw new Error('Take target is not a Shot');
+      const temporary = await mkdtemp(join(project.metadataRoot, 'temp', 'analysis-'));
+      try {
+        const frames = await this.frames.extract(
+          objectPath,
+          temporary,
+          shot.duration_us,
+          context.signal,
+        );
+        const evidence: Array<Record<string, unknown>> = [];
+        const summaries: string[] = [];
+        for (const frame of frames) {
+          const bytes = await readFile(frame.path);
+          const result = await provider.understandImage({
+            model,
+            prompt: `${prompt}\nFrame timecode: ${(frame.timeUs / 1_000_000).toFixed(3)} seconds.`,
+            imageUrl: `data:image/jpeg;base64,${bytes.toString('base64')}`,
+            mimeType: 'image/jpeg',
+            signal: context.signal,
+          });
+          summaries.push(`${(frame.timeUs / 1_000_000).toFixed(3)}s: ${result.text}`);
+          evidence.push({ timeUs: frame.timeUs, summary: result.text });
+        }
+        return project.media.recordAnalysis({
+          takeId: take.id,
+          kind: 'video',
+          providerId,
+          modelId: model,
+          summary: summaries.join('\n'),
+          evidence,
+          provenance: {
+            frameCount: frames.length,
+            ffmpegVersion: availability.version ?? 'unknown',
+            sampling: 'deterministic-even-v1',
+          },
+        });
+      } finally {
+        await rm(temporary, { recursive: true, force: true });
+      }
+    });
     return tasks;
   }
 
@@ -253,9 +342,13 @@ export class CoreServer {
               'revision.commit',
               'revision.branch',
               'movie.entity',
+              'story.edit',
+              'timeline.assemble',
               'object.import',
               'take.manage',
               'evaluation.read',
+              'feedback.manage',
+              'media.analyze',
               'task.run',
               'task.approve',
               'task.events',
@@ -389,6 +482,26 @@ export class CoreServer {
             entity: movieEntitySchema.parse(command.params.entity),
           }),
         };
+      case 'story.get':
+        return { id: command.id, ok: true, result: await this.requireProject().movies.getStory() };
+      case 'story.update':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.updateStory(command.params),
+        };
+      case 'timeline.get':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.readTimeline(),
+        };
+      case 'timeline.assemble':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.assembleTimeline(command.params),
+        };
       case 'object.import': {
         const object = await this.requireProject().objects.importFile(command.params.path);
         return { id: command.id, ok: true, result: object };
@@ -410,6 +523,44 @@ export class CoreServer {
           id: command.id,
           ok: true,
           result: this.requireProject().media.listEvaluations(command.params.takeId),
+        };
+      case 'feedback.create':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().feedback.create(command.params),
+        };
+      case 'feedback.list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().feedback.list(command.params),
+        };
+      case 'feedback.resolve':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().feedback.resolve(
+            command.params.feedbackId,
+            command.params.revisionId,
+          ),
+        };
+      case 'analysis.create_task': {
+        this.requireProject().media.getTake(command.params.takeId);
+        const task = this.tasks.create(`Analyze Take ${command.params.takeId}`, [
+          {
+            kind: 'media.analyze',
+            title: 'Analyze media with timecoded evidence',
+            input: command.params,
+          },
+        ]);
+        return { id: command.id, ok: true, result: task };
+      }
+      case 'analysis.list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().media.listAnalyses(command.params.takeId),
         };
       case 'task.create': {
         const project = this.requireProject();

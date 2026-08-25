@@ -33,6 +33,10 @@ describe('EncryptedSecretStore', () => {
       secretId: 'provider.openrouter',
     });
     expect(profile.hasSecret).toBe(true);
+    store.rememberProject('/movies/opening', 'Opening');
+    expect(store.listRecentProjects()).toEqual([
+      expect.objectContaining({ path: '/movies/opening', title: 'Opening' }),
+    ]);
     expect(store.list()[0]).not.toHaveProperty('value');
     expect(await store.get('provider.openrouter')).toBe(canary);
     store.close();

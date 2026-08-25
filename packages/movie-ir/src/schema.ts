@@ -49,6 +49,30 @@ export const projectManifestSchema = z.object({
   extensions: extensionsSchema,
 });
 
+export const briefSchema = z.object({
+  schema_version: z.literal(SCHEMA_VERSION),
+  title: z.string().trim().min(1).max(200),
+  premise: z.string().max(20_000).default(''),
+  genres: z.array(z.string()).default([]),
+  audience: z.string().default(''),
+  tone: z.array(z.string()).default([]),
+  extensions: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const storyBibleSchema = z.object({
+  schema_version: z.literal(SCHEMA_VERSION),
+  themes: z.array(z.string()).default([]),
+  world: z.string().default(''),
+  rules: z.array(z.string()).default([]),
+  extensions: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const screenplaySchema = z.object({
+  schema_version: z.literal(SCHEMA_VERSION),
+  scenes: z.array(entityIdSchema).default([]),
+  extensions: z.record(z.string(), z.unknown()).default({}),
+});
+
 const entityHeaderSchema = z.object({
   schema_version: z.literal(SCHEMA_VERSION),
   id: entityIdSchema,
@@ -161,6 +185,9 @@ export const movieEntitySchema = z.discriminatedUnion('type', [
 ]);
 
 export type ProjectManifest = z.infer<typeof projectManifestSchema>;
+export type Brief = z.infer<typeof briefSchema>;
+export type StoryBible = z.infer<typeof storyBibleSchema>;
+export type Screenplay = z.infer<typeof screenplaySchema>;
 export type MovieEntity = z.infer<typeof movieEntitySchema>;
 export type Character = z.infer<typeof characterSchema>;
 export type Scene = z.infer<typeof sceneSchema>;

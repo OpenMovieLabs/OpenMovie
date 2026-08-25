@@ -147,6 +147,42 @@ const migrations = [
         ON evaluations(take_id, created_at DESC);
     `,
   },
+  {
+    version: 5,
+    sql: `
+      CREATE TABLE IF NOT EXISTS feedback (
+        id TEXT PRIMARY KEY,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        body TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+        author_id TEXT NOT NULL,
+        resolution_revision_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS feedback_target_status
+        ON feedback(target_type, target_id, status, created_at DESC);
+    `,
+  },
+  {
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS analyses (
+        id TEXT PRIMARY KEY,
+        take_id TEXT NOT NULL REFERENCES takes(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video')),
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        evidence_json TEXT NOT NULL,
+        provenance_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS analyses_take_created
+        ON analyses(take_id, created_at DESC);
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

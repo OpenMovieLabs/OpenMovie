@@ -150,5 +150,108 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
     async ({ name }) => result(await project.revisions.switchBranch(name)),
   );
 
+  server.registerTool(
+    'story_get',
+    {
+      description: 'Read the structured Story Brief, Bible, and Screenplay.',
+      inputSchema: z.object({}),
+    },
+    async () => result(await project.movies.getStory()),
+  );
+
+  server.registerTool(
+    'story_update',
+    {
+      description: 'Update Story intent and commit the files as one Movie Revision.',
+      inputSchema: z.object({
+        premise: z.string().max(20_000),
+        themes: z.array(z.string().max(200)).max(100),
+        world: z.string().max(20_000),
+        rules: z.array(z.string().max(500)).max(200),
+        expectedRevisionId: expectedRevisionSchema,
+      }),
+    },
+    async ({ expectedRevisionId, ...input }) =>
+      result(
+        await project.movies.updateStory({
+          ...input,
+          expectedRevisionId,
+          authorId: 'mcp_agent',
+        }),
+      ),
+  );
+
+  server.registerTool(
+    'timeline_get',
+    {
+      description: 'Read the Current Cut Timeline and its Shot/Take clips.',
+      inputSchema: z.object({}),
+    },
+    async () => result(await project.movies.readTimeline()),
+  );
+
+  server.registerTool(
+    'timeline_assemble',
+    {
+      description: 'Assemble ordered Shots and selected Takes into the Current Cut Revision.',
+      inputSchema: z.object({ expectedRevisionId: expectedRevisionSchema }),
+    },
+    async ({ expectedRevisionId }) =>
+      result(await project.movies.assembleTimeline({ expectedRevisionId, authorId: 'mcp_agent' })),
+  );
+
+  server.registerTool(
+    'take_list',
+    {
+      description: 'List immutable generated Takes and provenance for a Shot.',
+      inputSchema: z.object({ shotId: z.string().min(1) }),
+    },
+    ({ shotId }) => Promise.resolve(result({ takes: project.media.listTakes(shotId) })),
+  );
+
+  server.registerTool(
+    'evaluation_list',
+    {
+      description: 'List deterministic and model-based evaluations for a Take.',
+      inputSchema: z.object({ takeId: z.string().min(1) }),
+    },
+    ({ takeId }) => Promise.resolve(result({ evaluations: project.media.listEvaluations(takeId) })),
+  );
+
+  server.registerTool(
+    'feedback_list',
+    {
+      description: 'List open or resolved feedback bound to Movie entities and Takes.',
+      inputSchema: z.object({
+        targetType: z.enum(['project', 'scene', 'shot', 'take', 'revision']).optional(),
+        targetId: z.string().min(1).optional(),
+        status: z.enum(['open', 'resolved']).optional(),
+      }),
+    },
+    (input) => Promise.resolve(result({ feedback: project.feedback.list(input) })),
+  );
+
+  server.registerTool(
+    'feedback_create',
+    {
+      description: 'Attach actionable feedback to a Project, Scene, Shot, Take, or Revision.',
+      inputSchema: z.object({
+        targetType: z.enum(['project', 'scene', 'shot', 'take', 'revision']),
+        targetId: z.string().min(1),
+        body: z.string().trim().min(1).max(10_000),
+      }),
+    },
+    async (input) => result(await project.feedback.create({ ...input, authorId: 'mcp_agent' })),
+  );
+
+  server.registerTool(
+    'analysis_list',
+    {
+      description: 'List persisted image or timecoded video analysis results for a Take.',
+      inputSchema: z.object({ takeId: z.string().min(1) }),
+    },
+    ({ takeId }) => Promise.resolve(result({ analyses: project.media.listAnalyses(takeId) })),
+  );
+
   return server;
 }

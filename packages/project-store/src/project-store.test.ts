@@ -202,6 +202,28 @@ describe('ProjectStore', () => {
       status: 'passed',
       score: 1,
     });
+    const analysis = project.media.recordAnalysis({
+      takeId: take.id,
+      kind: 'image',
+      providerId: 'fake',
+      modelId: 'fake-vision-v1',
+      summary: 'A deterministic opening frame.',
+      evidence: [{ description: 'Fixture frame' }],
+      provenance: { frameCount: 1 },
+    });
+    expect(project.media.listAnalyses(take.id)[0]).toMatchObject({
+      id: analysis.id,
+      kind: 'image',
+    });
+    const feedback = await project.feedback.create({
+      targetType: 'take',
+      targetId: take.id,
+      body: 'Increase the contrast around the subject',
+      authorId: 'reviewer_local',
+    });
+    expect(project.feedback.list({ targetType: 'take', targetId: take.id })).toMatchObject([
+      { id: feedback.id, status: 'open' },
+    ]);
     const selected = await project.media.selectTake({
       takeId: take.id,
       expectedRevisionId: shot.revision.id,
@@ -209,6 +231,38 @@ describe('ProjectStore', () => {
     });
     expect(selected.shot.selected_take).toBe(take.id);
     expect(selected.revisionId).toBe(project.revisions.currentRevisionId());
+    const story = await project.movies.getStory();
+    expect(story.screenplay.scenes).toContain(scene.entity.id);
+    const storyUpdate = await project.movies.updateStory({
+      premise: 'A precise opening image establishes the world.',
+      themes: ['discovery'],
+      world: 'A near-future city',
+      rules: ['Keep screen direction consistent'],
+      expectedRevisionId: selected.revisionId,
+      authorId: 'user_local',
+    });
+    expect(storyUpdate.bible.themes).toEqual(['discovery']);
+    expect(project.feedback.resolve(feedback.id, storyUpdate.revision.id)).toMatchObject({
+      status: 'resolved',
+      resolutionRevisionId: storyUpdate.revision.id,
+    });
+    const assembled = await project.movies.assembleTimeline({
+      expectedRevisionId: storyUpdate.revision.id,
+      authorId: 'user_local',
+    });
+    expect(assembled.timeline.video_tracks[0]?.clips[0]).toMatchObject({
+      shot: shot.entity.id,
+      take: take.id,
+      start_us: 0,
+      duration_us: 2_000_000,
+    });
+    const reassembled = await project.movies.assembleTimeline({
+      expectedRevisionId: assembled.revision.id,
+      authorId: 'user_local',
+    });
+    expect(reassembled.timeline.video_tracks[0]?.clips[0]?.id).toBe(
+      assembled.timeline.video_tracks[0]?.clips[0]?.id,
+    );
     await project.close();
   });
 });

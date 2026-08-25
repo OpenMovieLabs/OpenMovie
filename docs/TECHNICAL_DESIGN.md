@@ -1,7 +1,7 @@
 # OpenMovie 技术方案
 
 > 状态：Implementation Baseline v0  
-> 更新日期：2026-08-25  
+> 更新日期：2026-08-26  
 > 上位文档：[产品定义](../PRODUCT.md)  
 > 配套文档：[产品设计](./PRODUCT_DESIGN.md) · [项目格式](./PROJECT_FORMAT.md) · [协议契约](./PROTOCOLS.md) · [安全设计](./SECURITY.md) · [实施计划](./IMPLEMENTATION_PLAN.md) · [ADR](./adr/README.md)
 
@@ -170,10 +170,12 @@ SQLite 驱动封装在 Storage Port 后。若 better-sqlite3 无法通过目标 
 
 ### 4.5 媒体
 
-- FFmpeg/FFprobe 作为受版本管理的 Sidecar。
+- FFmpeg/FFprobe 通过参数数组调用。开发构建从 `PATH` 或 `OPENMOVIE_FFMPEG_PATH` 探测；公开发行包在 M6 固定并校验 Sidecar 版本。
 - 缩略图、波形和代理媒体异步生成。
 - 所有命令使用参数数组启动，不通过 Shell 拼接。
 - 原始媒体与生成媒体进入内容寻址对象库。
+
+当前视频分析实现按 Shot 微秒时长确定性抽取四个关键帧，将每帧作为标准 OpenAI-compatible 多模态输入提交给视觉 Provider，并把带时间码的摘要、证据和模型 Provenance 持久化。图片分析直接读取受大小限制的对象，不依赖 FFmpeg。
 
 ## 5. 推荐仓库结构
 

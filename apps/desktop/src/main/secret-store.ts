@@ -25,6 +25,8 @@ export type ProviderProfile = {
   updatedAt: string;
 };
 
+export type RecentProject = { path: string; title: string; lastOpenedAt: string };
+
 export class EncryptedSecretStore {
   private readonly database: Database.Database;
 
@@ -52,6 +54,11 @@ export class EncryptedSecretStore {
         secret_id TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS recent_projects (
+        path TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        last_opened_at TEXT NOT NULL
       );
     `);
   }
@@ -167,6 +174,34 @@ export class EncryptedSecretStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
+  }
+
+  rememberProject(path: string, title: string): RecentProject {
+    const lastOpenedAt = new Date().toISOString();
+    this.database
+      .prepare(
+        `INSERT INTO recent_projects(path, title, last_opened_at) VALUES (?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET title = excluded.title,
+           last_opened_at = excluded.last_opened_at`,
+      )
+      .run(path, title, lastOpenedAt);
+    return { path, title, lastOpenedAt };
+  }
+
+  listRecentProjects(): RecentProject[] {
+    return (
+      this.database
+        .prepare(
+          'SELECT path, title, last_opened_at FROM recent_projects ORDER BY last_opened_at DESC',
+        )
+        .all() as Array<{ path: string; title: string; last_opened_at: string }>
+    ).map((row) => ({ path: row.path, title: row.title, lastOpenedAt: row.last_opened_at }));
+  }
+
+  forgetProject(path: string): boolean {
+    return (
+      this.database.prepare('DELETE FROM recent_projects WHERE path = ?').run(path).changes > 0
+    );
   }
 
   close(): void {

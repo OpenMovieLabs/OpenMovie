@@ -1,5 +1,6 @@
 import type {
   CoreHealth,
+  AnalysisRecord,
   DoctorReport,
   BranchRecord,
   FileDiff,
@@ -12,8 +13,18 @@ import type {
   TaskEvent,
   TakeRecord,
   EvaluationRecord,
+  FeedbackRecord,
 } from '@openmovie/contracts';
-import type { Character, MovieEntity, Scene, Shot } from '@openmovie/movie-ir';
+import type {
+  Brief,
+  Character,
+  MovieEntity,
+  Scene,
+  Screenplay,
+  Shot,
+  StoryBible,
+  Timeline,
+} from '@openmovie/movie-ir';
 import { contextBridge, ipcRenderer } from 'electron';
 
 export type OpenMovieDesktopApi = {
@@ -22,6 +33,8 @@ export type OpenMovieDesktopApi = {
   reportReady: () => void;
   createProject: (title: string) => Promise<ProjectSummary | null>;
   openProject: () => Promise<ProjectSummary | null>;
+  openRecentProject: (path: string) => Promise<ProjectSummary>;
+  listRecentProjects: () => Promise<RecentProject[]>;
   getProjectSummary: () => Promise<ProjectSummary>;
   runDoctor: (deep?: boolean) => Promise<DoctorReport>;
   renameProject: (title: string) => Promise<ProjectSummary>;
@@ -41,9 +54,25 @@ export type OpenMovieDesktopApi = {
     framing?: string,
     movement?: string,
   ) => Promise<EntityCommitResult<Shot>>;
+  getStory: () => Promise<StoryDocuments>;
+  updateStory: (input: StoryUpdateInput) => Promise<StoryUpdateResult>;
+  getTimeline: () => Promise<Timeline>;
+  assembleTimeline: () => Promise<TimelineUpdateResult>;
   listTakes: (shotId: string) => Promise<TakeRecord[]>;
   selectTake: (takeId: string) => Promise<TakeSelectionResult>;
   listEvaluations: (takeId: string) => Promise<EvaluationRecord[]>;
+  listFeedback: (
+    targetType: FeedbackRecord['targetType'],
+    targetId: string,
+    status?: FeedbackRecord['status'],
+  ) => Promise<FeedbackRecord[]>;
+  createFeedback: (
+    targetType: FeedbackRecord['targetType'],
+    targetId: string,
+    body: string,
+  ) => Promise<FeedbackRecord>;
+  listAnalyses: (takeId: string) => Promise<AnalysisRecord[]>;
+  analyzeTake: (takeId: string, providerId: string, prompt: string) => Promise<Task>;
   runTask: (
     goal: string,
     plannerProviderId?: string,
@@ -88,12 +117,22 @@ export type TakeSelectionResult = {
   revisions: RevisionRecord[];
 };
 
+export type StoryDocuments = { brief: Brief; bible: StoryBible; screenplay: Screenplay };
+export type StoryUpdateInput = Pick<Brief, 'premise'> &
+  Pick<StoryBible, 'themes' | 'world' | 'rules'>;
+export type StoryUpdateResult = Pick<StoryDocuments, 'brief' | 'bible'> & {
+  revision: RevisionRecord;
+};
+export type TimelineUpdateResult = { timeline: Timeline; revision: RevisionRecord };
+
 export type SecretMetadata = {
   id: string;
   label: string;
   createdAt: string;
   updatedAt: string;
 };
+
+export type RecentProject = { path: string; title: string; lastOpenedAt: string };
 
 export type ProviderProfile = {
   id: string;
@@ -119,6 +158,10 @@ const api: OpenMovieDesktopApi = {
   createProject: (title) =>
     ipcRenderer.invoke('openmovie:project-create', title) as Promise<ProjectSummary | null>,
   openProject: () => ipcRenderer.invoke('openmovie:project-open') as Promise<ProjectSummary | null>,
+  openRecentProject: (path) =>
+    ipcRenderer.invoke('openmovie:project-open-recent', path) as Promise<ProjectSummary>,
+  listRecentProjects: () =>
+    ipcRenderer.invoke('openmovie:project-recent-list') as Promise<RecentProject[]>,
   getProjectSummary: () =>
     ipcRenderer.invoke('openmovie:project-summary') as Promise<ProjectSummary>,
   runDoctor: (deep) =>
@@ -150,11 +193,32 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:shot-create', sceneId, durationUs, framing, movement) as Promise<
       EntityCommitResult<Shot>
     >,
+  getStory: () => ipcRenderer.invoke('openmovie:story-get') as Promise<StoryDocuments>,
+  updateStory: (input) =>
+    ipcRenderer.invoke('openmovie:story-update', input) as Promise<StoryUpdateResult>,
+  getTimeline: () => ipcRenderer.invoke('openmovie:timeline-get') as Promise<Timeline>,
+  assembleTimeline: () =>
+    ipcRenderer.invoke('openmovie:timeline-assemble') as Promise<TimelineUpdateResult>,
   listTakes: (shotId) => ipcRenderer.invoke('openmovie:take-list', shotId) as Promise<TakeRecord[]>,
   selectTake: (takeId) =>
     ipcRenderer.invoke('openmovie:take-select', takeId) as Promise<TakeSelectionResult>,
   listEvaluations: (takeId) =>
     ipcRenderer.invoke('openmovie:evaluation-list', takeId) as Promise<EvaluationRecord[]>,
+  listFeedback: (targetType, targetId, status) =>
+    ipcRenderer.invoke('openmovie:feedback-list', targetType, targetId, status) as Promise<
+      FeedbackRecord[]
+    >,
+  createFeedback: (targetType, targetId, body) =>
+    ipcRenderer.invoke(
+      'openmovie:feedback-create',
+      targetType,
+      targetId,
+      body,
+    ) as Promise<FeedbackRecord>,
+  listAnalyses: (takeId) =>
+    ipcRenderer.invoke('openmovie:analysis-list', takeId) as Promise<AnalysisRecord[]>,
+  analyzeTake: (takeId, providerId, prompt) =>
+    ipcRenderer.invoke('openmovie:analysis-run', takeId, providerId, prompt) as Promise<Task>,
   runTask: (goal, plannerProviderId, requiresApproval, targetShotId, mediaKind, mediaProviderId) =>
     ipcRenderer.invoke(
       'openmovie:task-run',

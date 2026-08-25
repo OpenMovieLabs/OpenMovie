@@ -1,7 +1,7 @@
 # OpenMovie Protocol Contracts v0
 
 > 状态：Implementation Baseline  
-> 更新日期：2026-08-25  
+> 更新日期：2026-08-26  
 > 关联：[技术方案](./TECHNICAL_DESIGN.md) · [项目格式](./PROJECT_FORMAT.md) · [安全设计](./SECURITY.md)
 
 ## 1. 范围
@@ -96,8 +96,9 @@ interface CoreCommand<T = unknown> {
 
 - Project：`project.create`、`project.open`、`project.get_summary`、`project.doctor`。
 - Revision：commit、list、diff、working changes、restore、branch create/list/switch。
-- Movie IR：Character、Scene、Shot 创建，实体读取和乐观并发更新。
-- Media：Object import、Take list/select、Evaluation list。
+- Movie IR：Brief、Story Bible、Character、Scene、Shot、Screenplay 和 Timeline 的读取、创建、装配与乐观并发更新。
+- Media：Object import、Take list/select、Evaluation list、图片/视频分析及带证据的 Analysis list。
+- Feedback：绑定 Project、Scene、Shot、Take 或 Revision 的创建、查询与解决状态。
 - Task：create、run、list、events、approve、cancel。
 - Provider：OpenAI-compatible Chat/Vision/Images、通用异步 HTTP Video Jobs。
 - Harness：Codex App Server 与可用性探测。
@@ -382,6 +383,9 @@ Tool 名称采用 namespace.action，例如 shot.get、shot.propose_patch。
 - scene_create / openmovie_scene_create
 - shot_create / openmovie_shot_create
 - branch_list、branch_create、branch_switch
+- story_get、story_update、timeline_get、timeline_assemble
+- take_list、evaluation_list、analysis_list
+- feedback_list、feedback_create
 
 所有创建命令要求 expectedRevisionId，写入形成完整 Movie IR 文件树 Revision。Desktop 内 Dynamic Tool 由当前 Core 直接执行；独立 MCP Server 获取项目写锁，因此不会与 Desktop 形成双写入口。
 

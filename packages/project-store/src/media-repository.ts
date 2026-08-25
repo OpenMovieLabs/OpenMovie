@@ -35,6 +35,18 @@ export type EvaluationRecord = {
   createdAt: string;
 };
 
+export type AnalysisRecord = {
+  id: string;
+  takeId: string;
+  kind: 'image' | 'video';
+  providerId: string;
+  modelId: string;
+  summary: string;
+  evidence: Array<Record<string, unknown>>;
+  provenance: Record<string, unknown>;
+  createdAt: string;
+};
+
 export class MediaRepository {
   constructor(
     private readonly database: Database.Database,
@@ -147,6 +159,15 @@ export class MediaRepository {
     }));
   }
 
+  getTake(takeId: string): TakeRecord {
+    const row = this.database.prepare('SELECT shot_id FROM takes WHERE id = ?').get(takeId) as
+      { shot_id: string } | undefined;
+    if (!row) throw new Error(`Take not found: ${takeId}`);
+    const take = this.listTakes(row.shot_id).find((item) => item.id === takeId);
+    if (!take) throw new Error(`Take not found: ${takeId}`);
+    return take;
+  }
+
   async selectTake(input: {
     takeId: string;
     expectedRevisionId: string | null;
@@ -217,6 +238,66 @@ export class MediaRepository {
       status: row.status,
       ...(row.score === null ? {} : { score: row.score }),
       findings: JSON.parse(row.findings_json) as Array<Record<string, unknown>>,
+      provenance: JSON.parse(row.provenance_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    }));
+  }
+
+  recordAnalysis(input: Omit<AnalysisRecord, 'id' | 'createdAt'>): AnalysisRecord {
+    this.getTake(input.takeId);
+    const record: AnalysisRecord = {
+      ...input,
+      id: createId('analysis'),
+      createdAt: new Date().toISOString(),
+    };
+    this.database
+      .prepare(
+        `INSERT INTO analyses(
+          id, take_id, kind, provider_id, model_id, summary,
+          evidence_json, provenance_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.id,
+        record.takeId,
+        record.kind,
+        record.providerId,
+        record.modelId,
+        record.summary,
+        JSON.stringify(record.evidence),
+        JSON.stringify(record.provenance),
+        record.createdAt,
+      );
+    return record;
+  }
+
+  listAnalyses(takeId: string): AnalysisRecord[] {
+    return (
+      this.database
+        .prepare(
+          `SELECT id, take_id, kind, provider_id, model_id, summary,
+             evidence_json, provenance_json, created_at
+           FROM analyses WHERE take_id = ? ORDER BY created_at DESC`,
+        )
+        .all(takeId) as Array<{
+        id: string;
+        take_id: string;
+        kind: AnalysisRecord['kind'];
+        provider_id: string;
+        model_id: string;
+        summary: string;
+        evidence_json: string;
+        provenance_json: string;
+        created_at: string;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      takeId: row.take_id,
+      kind: row.kind,
+      providerId: row.provider_id,
+      modelId: row.model_id,
+      summary: row.summary,
+      evidence: JSON.parse(row.evidence_json) as Array<Record<string, unknown>>,
       provenance: JSON.parse(row.provenance_json) as Record<string, unknown>,
       createdAt: row.created_at,
     }));

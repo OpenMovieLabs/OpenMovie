@@ -25,7 +25,7 @@ Desktop 启动
 
 每个后续阶段都保持这条主路径可运行。
 
-当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的首个媒体闭环：多文件 Movie IR Revision、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、OpenAI-compatible 图片、异步视频 Job、不可变 Take、确定性 Evaluation、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
+当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
 
 ## 2. 工程约束
 
@@ -484,8 +484,8 @@ Fixture 不包含真实人物敏感素材。
 - [x] Security Design v0。
 - [x] 首批 ADR。
 - [x] Milestone 与首批 Issues。
-- [ ] 初始化 Monorepo 与 Lockfile。
-- [ ] 选择并记录具体 Runtime/Dependency 版本。
-- [ ] 配置 CI。
+- [x] 初始化 Monorepo 与 Lockfile。
+- [x] 选择并记录具体 Runtime/Dependency 版本。
+- [x] 配置 CI。
 
-前三项未完成项正是实现阶段的第 1–3 个工程任务，不再是产品或架构阻塞项。
+产品与架构门禁、仓库基线和双平台 CI 已建立；剩余工作按 M5–M6 验收项持续收敛。

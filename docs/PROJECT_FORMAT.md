@@ -1,7 +1,7 @@
 # OpenMovie Project Format v0
 
 > 状态：Implementation Baseline  
-> 更新日期：2026-08-25  
+> 更新日期：2026-08-26  
 > 关联：[技术方案](./TECHNICAL_DESIGN.md) · [协议契约](./PROTOCOLS.md)
 
 ## 1. 目的
@@ -273,6 +273,8 @@ evaluations:
 
 Take 和其 Artifact 不可变。选择 Take 只修改 Shot.selected_take 或 Timeline 引用。
 
+对 Take 的 Evaluation、Multimodal Analysis 与 Feedback 保存在 SQLite。Analysis 记录模型、摘要、证据、关键帧时间码和 Provenance；它不修改不可变 Artifact。
+
 ## 12. Asset Manifest
 
 ```yaml
@@ -386,6 +388,7 @@ artifacts
 object_refs
 takes
 evaluations
+analyses
 feedback
 events
 schema_migrations

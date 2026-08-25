@@ -1,18 +1,28 @@
+import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
+  briefSchema,
   characterSchema,
   createId,
   entityIdSchema,
   parseYaml,
+  parseYamlDocument,
+  screenplaySchema,
   sceneSchema,
   shotSchema,
+  storyBibleSchema,
   stringifyYaml,
+  timelineSchema,
+  type Brief,
   type Character,
   type MovieEntity,
   type Scene,
   type Shot,
+  type StoryBible,
+  type Screenplay,
+  type Timeline,
 } from '@openmovie/movie-ir';
 
 import { RevisionConflictError } from './errors.js';
@@ -51,6 +61,91 @@ export class MovieWorkspace {
   async read(kind: EntityKind, id: string): Promise<MovieEntity> {
     entityIdSchema.parse(id);
     return this.parse(kind, join(this.root, directories[kind], `${id}.yaml`));
+  }
+
+  async getStory(): Promise<{ brief: Brief; bible: StoryBible; screenplay: Screenplay }> {
+    const [brief, bible, screenplay] = await Promise.all([
+      this.readDocument('brief.yaml', briefSchema),
+      this.readDocument('story/bible.yaml', storyBibleSchema),
+      this.readDocument('story/screenplay.yaml', screenplaySchema),
+    ]);
+    return { brief, bible, screenplay };
+  }
+
+  async updateStory(input: {
+    premise: string;
+    themes: string[];
+    world: string;
+    rules: string[];
+    expectedRevisionId: string | null;
+    authorId: string;
+  }): Promise<{ brief: Brief; bible: StoryBible; revision: RevisionRecord }> {
+    const current = await this.getStory();
+    const brief = briefSchema.parse({ ...current.brief, premise: input.premise });
+    const bible = storyBibleSchema.parse({
+      ...current.bible,
+      themes: input.themes,
+      world: input.world,
+      rules: input.rules,
+    });
+    const revision = await this.revisions.commitFiles({
+      expectedRevisionId: input.expectedRevisionId,
+      authorType: 'user',
+      authorId: input.authorId,
+      message: 'Update story brief and bible',
+      changes: [
+        { path: 'brief.yaml', content: stringifyYaml(brief) },
+        { path: 'story/bible.yaml', content: stringifyYaml(bible) },
+      ],
+    });
+    return { brief, bible, revision };
+  }
+
+  async readTimeline(): Promise<Timeline> {
+    return this.readDocument('timeline/main.yaml', timelineSchema);
+  }
+
+  async assembleTimeline(input: {
+    expectedRevisionId: string | null;
+    authorId: string;
+  }): Promise<{ timeline: Timeline; revision: RevisionRecord }> {
+    const current = await this.readTimeline();
+    const scenes = ((await this.list('scene')) as Scene[]).sort(
+      (left, right) => left.order - right.order,
+    );
+    const allShots = (await this.list('shot')) as Shot[];
+    const byId = new Map(allShots.map((shot) => [shot.id, shot]));
+    let startUs = 0;
+    const clips = scenes.flatMap((scene) =>
+      scene.shots.flatMap((shotId) => {
+        const shot = byId.get(shotId);
+        if (!shot) return [];
+        const clip = {
+          id: `clip_${createHash('sha256').update(`${scene.id}:${shot.id}`).digest('hex').slice(0, 20)}`,
+          shot: shot.id,
+          take: shot.selected_take,
+          start_us: startUs,
+          source_in_us: 0,
+          duration_us: shot.duration_us,
+        };
+        startUs += shot.duration_us;
+        return [clip];
+      }),
+    );
+    const timeline = timelineSchema.parse({
+      ...current,
+      revision: current.revision + 1,
+      updated_at: new Date().toISOString(),
+      video_tracks: [{ id: 'track_video_main', clips }],
+    });
+    const revision = await this.revisions.commitFiles({
+      expectedRevisionId: input.expectedRevisionId,
+      authorType: 'user',
+      authorId: input.authorId,
+      message: 'Assemble timeline from shots',
+      changes: [{ path: 'timeline/main.yaml', content: stringifyYaml(timeline) }],
+    });
+    return { timeline, revision };
   }
 
   async createCharacter(input: {
@@ -109,12 +204,20 @@ export class MovieWorkspace {
       constraints: [],
       extensions: {},
     });
+    const screenplay = await this.readDocument('story/screenplay.yaml', screenplaySchema);
+    const updatedScreenplay = screenplaySchema.parse({
+      ...screenplay,
+      scenes: [...screenplay.scenes, entity.id],
+    });
     const revision = await this.revisions.commitFiles({
       expectedRevisionId: input.expectedRevisionId,
       authorType: 'user',
       authorId: input.authorId,
       message: `Create scene ${entity.title}`,
-      changes: [{ path: entityPath(entity), content: stringifyYaml(entity) }],
+      changes: [
+        { path: entityPath(entity), content: stringifyYaml(entity) },
+        { path: 'story/screenplay.yaml', content: stringifyYaml(updatedScreenplay) },
+      ],
     });
     return { entity, revision };
   }
@@ -214,6 +317,13 @@ export class MovieWorkspace {
     if (kind === 'character') return parseYaml(source, characterSchema);
     if (kind === 'scene') return parseYaml(source, sceneSchema);
     return parseYaml(source, shotSchema);
+  }
+
+  private async readDocument<T>(
+    relativePath: string,
+    schema: { parse(value: unknown): T },
+  ): Promise<T> {
+    return schema.parse(parseYamlDocument(await readFile(join(this.root, relativePath), 'utf8')));
   }
 
   private validate(entity: MovieEntity): MovieEntity {

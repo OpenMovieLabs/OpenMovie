@@ -20,6 +20,8 @@ describe('OpenMovie MCP Server', () => {
     const tools = await client.listTools();
     expect(tools.tools.map((tool) => tool.name)).toContain('scene_create');
     expect(tools.tools.map((tool) => tool.name)).toContain('revision_diff');
+    expect(tools.tools.map((tool) => tool.name)).toContain('feedback_create');
+    expect(tools.tools.map((tool) => tool.name)).toContain('timeline_assemble');
 
     const summary = await client.callTool({ name: 'project_summary', arguments: {} });
     expect(summary.structuredContent).toMatchObject({ title: 'MCP Movie', currentBranch: 'main' });
@@ -31,7 +33,16 @@ describe('OpenMovie MCP Server', () => {
       arguments: { title: 'MCP opening', expectedRevisionId },
     });
     expect(created.isError).not.toBe(true);
-    expect(await project.movies.list('scene')).toHaveLength(1);
+    const scenes = await project.movies.list('scene');
+    expect(scenes).toHaveLength(1);
+    const scene = scenes[0];
+    if (!scene) throw new Error('Expected a Scene');
+    const feedback = await client.callTool({
+      name: 'feedback_create',
+      arguments: { targetType: 'scene', targetId: scene.id, body: 'Raise the emotional stakes' },
+    });
+    expect(feedback.isError).not.toBe(true);
+    expect(project.feedback.list({ targetType: 'scene', targetId: scene.id })).toHaveLength(1);
 
     await client.close();
     await server.close();

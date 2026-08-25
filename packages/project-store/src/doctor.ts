@@ -4,13 +4,17 @@ import { join, relative } from 'node:path';
 
 import {
   assetManifestSchema,
+  briefSchema,
   characterSchema,
   parseYamlDocument,
   sceneSchema,
+  screenplaySchema,
   shotSchema,
+  storyBibleSchema,
   timelineSchema,
   type AssetManifest,
   type ProjectManifest,
+  type Screenplay,
   type Timeline,
 } from '@openmovie/movie-ir';
 import type Database from 'better-sqlite3';
@@ -74,6 +78,13 @@ export class ProjectDoctor {
     const characterIds = new Set(characters.map((character) => character.id));
     const sceneIds = new Set(scenes.map((scene) => scene.id));
     const shotIds = new Set(shots.map((shot) => shot.id));
+    await this.validateStructuredFile(this.manifest.entrypoints.brief, briefSchema, issues, check);
+    await this.validateStructuredFile(
+      this.manifest.entrypoints.story_bible,
+      storyBibleSchema,
+      issues,
+      check,
+    );
 
     for (const scene of scenes) {
       for (const characterId of scene.characters) {
@@ -149,6 +160,23 @@ export class ProjectDoctor {
       issues,
       check,
     );
+    const screenplay = await this.validateStructuredFile<Screenplay>(
+      this.manifest.entrypoints.screenplay,
+      screenplaySchema,
+      issues,
+      check,
+    );
+    for (const sceneId of screenplay?.scenes ?? []) {
+      check();
+      if (!sceneIds.has(sceneId)) {
+        report({
+          severity: 'error',
+          code: 'REFERENCE_MISSING',
+          message: `Screenplay references missing scene ${sceneId}`,
+          path: this.manifest.entrypoints.screenplay,
+        });
+      }
+    }
     if (timeline) {
       const tracks = [
         ...timeline.video_tracks,

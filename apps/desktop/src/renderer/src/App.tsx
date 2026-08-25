@@ -12,9 +12,11 @@ import {
 } from 'lucide-react';
 
 import type {
+  AnalysisRecord,
   BranchRecord,
   CoreHealth,
   DoctorReport,
+  FeedbackRecord,
   FileDiff,
   HarnessHealth,
   InitializeResult,
@@ -25,8 +27,8 @@ import type {
   TakeRecord,
   EvaluationRecord,
 } from '@openmovie/contracts';
-import type { Character, Scene, Shot } from '@openmovie/movie-ir';
-import type { ProviderProfile } from '../../preload/index.js';
+import type { Character, Scene, Shot, Timeline } from '@openmovie/movie-ir';
+import type { ProviderProfile, RecentProject, StoryDocuments } from '../../preload/index.js';
 
 type RuntimeState =
   | { kind: 'loading' }
@@ -53,16 +55,22 @@ export function App(): React.JSX.Element {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [shots, setShots] = useState<Shot[]>([]);
+  const [story, setStory] = useState<StoryDocuments | null>(null);
+  const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [takesByShot, setTakesByShot] = useState<Record<string, TakeRecord[]>>({});
   const [evaluationsByTake, setEvaluationsByTake] = useState<Record<string, EvaluationRecord[]>>(
     {},
   );
+  const [feedbackByTake, setFeedbackByTake] = useState<Record<string, FeedbackRecord[]>>({});
+  const [analysesByTake, setAnalysesByTake] = useState<Record<string, AnalysisRecord[]>>({});
+  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
   const [doctorReport, setDoctorReport] = useState<DoctorReport | null>(null);
   const [section, setSection] = useState<ProjectSection>('Overview');
   const [showCreate, setShowCreate] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [providerForm, setProviderForm] = useState({
     id: 'openrouter',
     label: 'OpenRouter',
@@ -76,6 +84,10 @@ export function App(): React.JSX.Element {
   const [taskShotId, setTaskShotId] = useState('');
   const [taskMediaKind, setTaskMediaKind] = useState<'image' | 'video'>('image');
   const [mediaProviderId, setMediaProviderId] = useState('fake');
+  const [analysisProviderId, setAnalysisProviderId] = useState('fake');
+  const [analysisPrompt, setAnalysisPrompt] = useState(
+    'Describe composition, characters, motion, continuity risks, and visible defects.',
+  );
   const [branchName, setBranchName] = useState('visual-experiment');
   const [characterName, setCharacterName] = useState('');
   const [characterAppearance, setCharacterAppearance] = useState('');
@@ -85,6 +97,10 @@ export function App(): React.JSX.Element {
   const [shotDuration, setShotDuration] = useState('4');
   const [shotFraming, setShotFraming] = useState('wide');
   const [shotMovement, setShotMovement] = useState('');
+  const [storyPremise, setStoryPremise] = useState('');
+  const [storyThemes, setStoryThemes] = useState('');
+  const [storyWorld, setStoryWorld] = useState('');
+  const [storyRules, setStoryRules] = useState('');
   const [title, setTitle] = useState('Untitled Movie');
   const [goal, setGoal] = useState('Create a cinematic establishing frame for the opening scene');
   const [lastTask, setLastTask] = useState<Task | null>(null);
@@ -98,10 +114,12 @@ export function App(): React.JSX.Element {
       window.openMovie.initialize(),
       window.openMovie.coreHealth(),
       window.openMovie.listHarnesses(),
+      window.openMovie.listRecentProjects(),
     ])
-      .then(([initialize, health, detectedHarnesses]) => {
+      .then(([initialize, health, detectedHarnesses, recents]) => {
         setRuntime({ kind: 'ready', initialize, health });
         setHarnesses(detectedHarnesses);
+        setRecentProjects(recents);
         window.openMovie.reportReady();
       })
       .catch((caught: unknown) => {
@@ -159,6 +177,9 @@ export function App(): React.JSX.Element {
       nextScenes,
       nextShots,
       nextWorkingChanges,
+      nextStory,
+      nextTimeline,
+      nextProviders,
     ] = await Promise.all([
       window.openMovie.listRevisions(),
       window.openMovie.listTasks(),
@@ -167,6 +188,9 @@ export function App(): React.JSX.Element {
       window.openMovie.listEntities('scene'),
       window.openMovie.listEntities('shot'),
       window.openMovie.getWorkingChanges(),
+      window.openMovie.getStory(),
+      window.openMovie.getTimeline(),
+      window.openMovie.listProviders(),
     ]);
     setRevisions(nextRevisions);
     setBranches(nextBranches);
@@ -188,7 +212,27 @@ export function App(): React.JSX.Element {
       ),
     );
     setEvaluationsByTake(Object.fromEntries(evaluationEntries));
+    const feedbackEntries = await Promise.all(
+      allTakes.map(
+        async (take) =>
+          [take.id, await window.openMovie.listFeedback('take', take.id, 'open')] as const,
+      ),
+    );
+    setFeedbackByTake(Object.fromEntries(feedbackEntries));
+    const analysisEntries = await Promise.all(
+      allTakes.map(
+        async (take) => [take.id, await window.openMovie.listAnalyses(take.id)] as const,
+      ),
+    );
+    setAnalysesByTake(Object.fromEntries(analysisEntries));
     setWorkingChanges(nextWorkingChanges);
+    setStory(nextStory);
+    setTimeline(nextTimeline);
+    setProviders(nextProviders);
+    setStoryPremise(nextStory.brief.premise);
+    setStoryThemes(nextStory.bible.themes.join(', '));
+    setStoryWorld(nextStory.bible.world);
+    setStoryRules(nextStory.bible.rules.join('\n'));
     setDoctorReport(null);
     setSelectedDiff(null);
     setShotSceneId((current) => current || (nextScenes[0]?.id ?? ''));
@@ -200,6 +244,7 @@ export function App(): React.JSX.Element {
       const created = await window.openMovie.createProject(title);
       if (!created) return;
       setShowCreate(false);
+      setRecentProjects(await window.openMovie.listRecentProjects());
       await loadProject(created);
     });
   };
@@ -207,7 +252,17 @@ export function App(): React.JSX.Element {
   const openProject = (): void => {
     void run(async () => {
       const opened = await window.openMovie.openProject();
-      if (opened) await loadProject(opened);
+      if (opened) {
+        setRecentProjects(await window.openMovie.listRecentProjects());
+        await loadProject(opened);
+      }
+    });
+  };
+
+  const openRecentProject = (path: string): void => {
+    void run(async () => {
+      await loadProject(await window.openMovie.openRecentProject(path));
+      setRecentProjects(await window.openMovie.listRecentProjects());
     });
   };
 
@@ -269,6 +324,32 @@ export function App(): React.JSX.Element {
     });
   };
 
+  const saveStory = (): void => {
+    void run(async () => {
+      await window.openMovie.updateStory({
+        premise: storyPremise,
+        themes: storyThemes
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        world: storyWorld,
+        rules: storyRules
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      });
+      if (project) await loadProject(await window.openMovie.getProjectSummary());
+    });
+  };
+
+  const assembleTimeline = (): void => {
+    void run(async () => {
+      const result = await window.openMovie.assembleTimeline();
+      setTimeline(result.timeline);
+      if (project) await loadProject(await window.openMovie.getProjectSummary());
+    });
+  };
+
   const runTask = (): void => {
     void run(async () => {
       const result = await window.openMovie.runTask(
@@ -303,6 +384,39 @@ export function App(): React.JSX.Element {
     void run(async () => {
       const result = await window.openMovie.selectTake(takeId);
       await loadProject(result.project);
+    });
+  };
+
+  const createTakeFeedback = (takeId: string): void => {
+    const body = feedbackDrafts[takeId]?.trim();
+    if (!body) return;
+    void run(async () => {
+      await window.openMovie.createFeedback('take', takeId, body);
+      setFeedbackDrafts((current) => ({ ...current, [takeId]: '' }));
+      const next = await window.openMovie.listFeedback('take', takeId, 'open');
+      setFeedbackByTake((current) => ({
+        ...current,
+        [takeId]: next,
+      }));
+    });
+  };
+
+  const analyzeTake = (takeId: string): void => {
+    void run(async () => {
+      const task = await window.openMovie.analyzeTake(takeId, analysisProviderId, analysisPrompt);
+      setLastTask(task);
+      setSection('Overview');
+    });
+  };
+
+  const fixFeedback = (feedback: FeedbackRecord, shot: Shot, take: TakeRecord): void => {
+    void run(async () => {
+      setProviders(await window.openMovie.listProviders());
+      setGoal(`Fix this feedback for ${shot.id}: ${feedback.body}`);
+      setTaskShotId(shot.id);
+      setTaskMediaKind(take.artifact.mimeType.startsWith('video/') ? 'video' : 'image');
+      setMediaProviderId('fake');
+      setShowTask(true);
     });
   };
 
@@ -419,6 +533,17 @@ export function App(): React.JSX.Element {
                       ? `Task ${lastTask.status}: ${lastTask.goal}`
                       : `${characters.length} characters · ${scenes.length} scenes · ${shots.length} shots`}
                   </p>
+                  {lastTask && (
+                    <div className="task-steps">
+                      {lastTask.steps.map((step) => (
+                        <div key={step.id} data-status={step.status}>
+                          <span className="status-dot" />
+                          <strong>{step.title}</strong>
+                          <small>{step.status}</small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <button className="secondary" onClick={() => setSection('Scenes')}>
                     <Plus size={17} /> Add a scene
                   </button>
@@ -494,6 +619,50 @@ export function App(): React.JSX.Element {
                       ))}
                     </div>
                   )}
+                </article>
+              </div>
+            ) : section === 'Story' ? (
+              <div className="entity-workbench">
+                <article className="entity-list-panel story-editor">
+                  <span className="section-label">STORY SOURCE</span>
+                  <h2>The narrative contract for every downstream shot.</h2>
+                  <label>
+                    Premise
+                    <textarea
+                      value={storyPremise}
+                      onChange={(event) => setStoryPremise(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    World
+                    <textarea
+                      value={storyWorld}
+                      onChange={(event) => setStoryWorld(event.target.value)}
+                    />
+                  </label>
+                </article>
+                <article className="entity-form">
+                  <h3>Story constraints</h3>
+                  <label>
+                    Themes (comma separated)
+                    <input
+                      value={storyThemes}
+                      onChange={(event) => setStoryThemes(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Rules (one per line)
+                    <textarea
+                      value={storyRules}
+                      onChange={(event) => setStoryRules(event.target.value)}
+                    />
+                  </label>
+                  <span className="form-note">
+                    {story?.screenplay.scenes.length ?? 0} scenes are linked from the screenplay.
+                  </span>
+                  <button className="primary" disabled={busy} onClick={saveStory}>
+                    Commit story Revision
+                  </button>
                 </article>
               </div>
             ) : section === 'Characters' ? (
@@ -610,42 +779,87 @@ export function App(): React.JSX.Element {
                                 : 'Take';
                           const previewUrl = artifactUrl(take.artifact.objectUri);
                           return (
-                            <div className="take-row" key={take.id} data-selected={selected}>
-                              <div className="take-preview-slot">
-                                {previewUrl && take.artifact.mimeType.startsWith('image/') && (
-                                  <img
-                                    className="take-preview"
-                                    src={previewUrl}
-                                    alt="Generated Take"
-                                  />
-                                )}
-                                {previewUrl && take.artifact.mimeType.startsWith('video/') && (
-                                  <video
-                                    className="take-preview"
-                                    src={previewUrl}
-                                    controls
-                                    preload="metadata"
-                                  />
-                                )}
-                              </div>
-                              <div>
-                                <strong>{model}</strong>
-                                <span>
-                                  {take.artifact.mimeType} · {take.artifact.byteSize} bytes
-                                  {evaluation
-                                    ? ` · score ${Math.round((evaluation.score ?? 0) * 100)}`
-                                    : ''}
+                            <div className="take-block" key={take.id}>
+                              <div className="take-row" data-selected={selected}>
+                                <div className="take-preview-slot">
+                                  {previewUrl && take.artifact.mimeType.startsWith('image/') && (
+                                    <img
+                                      className="take-preview"
+                                      src={previewUrl}
+                                      alt="Generated Take"
+                                    />
+                                  )}
+                                  {previewUrl && take.artifact.mimeType.startsWith('video/') && (
+                                    <video
+                                      className="take-preview"
+                                      src={previewUrl}
+                                      controls
+                                      preload="metadata"
+                                    />
+                                  )}
+                                </div>
+                                <div>
+                                  <strong>{model}</strong>
+                                  <span>
+                                    {take.artifact.mimeType} · {take.artifact.byteSize} bytes
+                                    {evaluation
+                                      ? ` · score ${Math.round((evaluation.score ?? 0) * 100)}`
+                                      : ''}
+                                  </span>
+                                </div>
+                                <span className="evaluation-state" data-status={evaluation?.status}>
+                                  {evaluation?.status ?? 'not evaluated'}
                                 </span>
+                                <button
+                                  disabled={busy || selected}
+                                  onClick={() => selectTake(take.id)}
+                                >
+                                  {selected ? 'Selected' : 'Select'}
+                                </button>
                               </div>
-                              <span className="evaluation-state" data-status={evaluation?.status}>
-                                {evaluation?.status ?? 'not evaluated'}
-                              </span>
-                              <button
-                                disabled={busy || selected}
-                                onClick={() => selectTake(take.id)}
-                              >
-                                {selected ? 'Selected' : 'Select'}
-                              </button>
+                              <div className="take-feedback">
+                                {(analysesByTake[take.id] ?? []).slice(0, 1).map((analysis) => (
+                                  <div className="analysis-result" key={analysis.id}>
+                                    <strong>
+                                      {analysis.kind} analysis · {analysis.modelId}
+                                    </strong>
+                                    <span>{analysis.summary}</span>
+                                  </div>
+                                ))}
+                                <button
+                                  className="analyze-button"
+                                  disabled={busy}
+                                  onClick={() => analyzeTake(take.id)}
+                                >
+                                  Analyze image / video
+                                </button>
+                                {(feedbackByTake[take.id] ?? []).map((feedback) => (
+                                  <div className="feedback-row" key={feedback.id}>
+                                    <span>{feedback.body}</span>
+                                    <button onClick={() => fixFeedback(feedback, shot, take)}>
+                                      Fix with AI
+                                    </button>
+                                  </div>
+                                ))}
+                                <div className="feedback-compose">
+                                  <input
+                                    placeholder="What should change in this Take?"
+                                    value={feedbackDrafts[take.id] ?? ''}
+                                    onChange={(event) =>
+                                      setFeedbackDrafts((current) => ({
+                                        ...current,
+                                        [take.id]: event.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <button
+                                    disabled={busy || !feedbackDrafts[take.id]?.trim()}
+                                    onClick={() => createTakeFeedback(take.id)}
+                                  >
+                                    Add feedback
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
@@ -698,6 +912,31 @@ export function App(): React.JSX.Element {
                       onChange={(event) => setShotMovement(event.target.value)}
                     />
                   </label>
+                  <label>
+                    Vision analysis provider
+                    <select
+                      value={analysisProviderId}
+                      onChange={(event) => setAnalysisProviderId(event.target.value)}
+                    >
+                      <option value="fake">Built-in deterministic Provider</option>
+                      {providers
+                        .filter(
+                          (provider) => provider.hasSecret && provider.protocol === 'openai_chat',
+                        )
+                        .map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.label} · {provider.model}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    Analysis prompt
+                    <textarea
+                      value={analysisPrompt}
+                      onChange={(event) => setAnalysisPrompt(event.target.value)}
+                    />
+                  </label>
                   <button
                     className="primary"
                     disabled={busy || !shotSceneId || !(Number(shotDuration) > 0)}
@@ -707,6 +946,47 @@ export function App(): React.JSX.Element {
                   </button>
                 </article>
               </div>
+            ) : section === 'Timeline' ? (
+              <article className="placeholder-panel timeline-panel">
+                <span className="section-label">CURRENT CUT</span>
+                <h2>Assemble selected Takes into a deterministic cut.</h2>
+                <p>
+                  Timeline clips reference Shots and immutable Takes. Rebuilding the cut creates a
+                  reviewable Revision and never overwrites generated media.
+                </p>
+                <button
+                  className="primary"
+                  disabled={busy || shots.length === 0}
+                  onClick={assembleTimeline}
+                >
+                  Assemble from shots
+                </button>
+                <div className="timeline-track">
+                  {(timeline?.video_tracks[0]?.clips ?? []).map((clip) => {
+                    const shot = shots.find((item) => item.id === clip.shot);
+                    const take = (takesByShot[clip.shot] ?? []).find(
+                      (item) => item.id === clip.take,
+                    );
+                    const previewUrl = take ? artifactUrl(take.artifact.objectUri) : undefined;
+                    return (
+                      <div className="timeline-clip" key={clip.id}>
+                        {previewUrl && take?.artifact.mimeType.startsWith('image/') && (
+                          <img src={previewUrl} alt="Timeline clip" />
+                        )}
+                        {previewUrl && take?.artifact.mimeType.startsWith('video/') && (
+                          <video src={previewUrl} preload="metadata" />
+                        )}
+                        <strong>{shot?.camera.framing || clip.shot}</strong>
+                        <span>
+                          {(clip.start_us / 1_000_000).toFixed(1)}s ·{' '}
+                          {(clip.duration_us / 1_000_000).toFixed(1)}s
+                        </span>
+                        {!clip.take && <em>No Take selected</em>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </article>
             ) : section === 'Tests' ? (
               <article className="placeholder-panel doctor-panel">
                 <span className="section-label">PROJECT DOCTOR</span>
@@ -744,16 +1024,7 @@ export function App(): React.JSX.Element {
                   </div>
                 )}
               </article>
-            ) : (
-              <article className="placeholder-panel">
-                <span className="section-label">{section.toUpperCase()}</span>
-                <h2>{section} workspace</h2>
-                <p>
-                  This source module is present in Movie IR and will gain its dedicated editor in
-                  the next build slice.
-                </p>
-              </article>
-            )}
+            ) : null}
           </section>
         </main>
       ) : (
@@ -778,10 +1049,28 @@ export function App(): React.JSX.Element {
           <section className="workspace-card">
             <div>
               <span className="section-label">RECENT PROJECTS</span>
-              <h2>Your movies will appear here</h2>
-              <p>
-                Create a structured movie project, then give OpenMovie a goal in plain language.
-              </p>
+              <h2>
+                {recentProjects.length > 0 ? 'Continue a movie' : 'Your movies will appear here'}
+              </h2>
+              {recentProjects.length > 0 ? (
+                <div className="recent-list">
+                  {recentProjects.slice(0, 6).map((recent) => (
+                    <button
+                      className="recent-project"
+                      key={recent.path}
+                      disabled={busy}
+                      onClick={() => openRecentProject(recent.path)}
+                    >
+                      <strong>{recent.title}</strong>
+                      <span>{recent.path}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p>
+                  Create a structured movie project, then give OpenMovie a goal in plain language.
+                </p>
+              )}
             </div>
             <div className="health-stack">
               <div className="runtime-status" data-state={runtime.kind}>

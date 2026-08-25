@@ -152,6 +152,29 @@ h1 {
   background: rgba(255, 255, 255, 0.025);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.24);
 }
+.recent-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+}
+.recent-project {
+  display: grid;
+  gap: 3px;
+  width: min(560px, 100%);
+  padding: 10px 12px;
+  text-align: left;
+  color: #ded9cf;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.recent-project span {
+  overflow: hidden;
+  color: #77746d;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .section-label {
   color: #77746e;
   font-size: 11px;
@@ -344,6 +367,34 @@ h1 {
   color: #85827b;
   line-height: 1.55;
 }
+.task-steps {
+  display: grid;
+  width: min(460px, 100%);
+  gap: 7px;
+  margin: 18px 0;
+}
+.task-steps > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  color: #aaa59c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.15);
+  font-size: 11px;
+}
+.task-steps > div[data-status='succeeded'] .status-dot {
+  background: #69b779;
+}
+.task-steps > div[data-status='failed'] .status-dot,
+.task-steps > div[data-status='cancelled'] .status-dot {
+  background: #dc6a6a;
+}
+.task-steps small {
+  color: #77746d;
+}
 .panel-title {
   display: flex;
   align-items: center;
@@ -429,14 +480,18 @@ h1 {
   gap: 7px;
   padding: 0 0 14px 16px;
 }
+.take-block {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
 .take-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   padding: 9px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  border: 0;
   background: rgba(0, 0, 0, 0.16);
 }
 .take-preview {
@@ -482,6 +537,64 @@ h1 {
 .evaluation-state[data-status='failed'] {
   color: #e27272;
 }
+.take-feedback {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.12);
+}
+.feedback-row,
+.feedback-compose {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feedback-row span {
+  flex: 1;
+  color: #aaa59c;
+  font-size: 11px;
+}
+.feedback-row button,
+.feedback-compose button {
+  padding: 5px 8px;
+  color: #c9c4bb;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.feedback-compose input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  color: #ddd8ce;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: #10100f;
+}
+.analysis-result {
+  display: grid;
+  gap: 4px;
+  max-height: 120px;
+  padding: 8px;
+  overflow: auto;
+  color: #aaa59c;
+  border-left: 2px solid rgba(105, 153, 190, 0.65);
+  background: rgba(105, 153, 190, 0.05);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+.analysis-result strong {
+  color: #8cabc2;
+}
+.analyze-button {
+  justify-self: start;
+  padding: 5px 8px;
+  color: #aebcc6;
+  border: 1px solid rgba(105, 153, 190, 0.25);
+  border-radius: 5px;
+  background: rgba(105, 153, 190, 0.05);
+}
 .entity-form {
   display: flex;
   flex-direction: column;
@@ -496,6 +609,32 @@ h1 {
   gap: 7px;
   color: #8f8c85;
   font-size: 12px;
+}
+.story-editor {
+  display: grid;
+  gap: 16px;
+}
+.story-editor h2 {
+  margin-bottom: 4px;
+}
+.story-editor label {
+  display: grid;
+  gap: 7px;
+  color: #8f8c85;
+  font-size: 12px;
+}
+.story-editor textarea {
+  min-height: 130px;
+  padding: 12px;
+  color: #eee9df;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #10100f;
+  resize: vertical;
+}
+.form-note {
+  color: #77746d;
+  font-size: 11px;
 }
 .entity-form textarea {
   min-height: 90px;
@@ -515,6 +654,46 @@ h1 {
   display: flex;
   gap: 10px;
   margin: 24px 0;
+}
+.timeline-panel > button {
+  margin: 12px 0 26px;
+}
+.timeline-track {
+  display: flex;
+  gap: 8px;
+  min-height: 150px;
+  padding: 18px;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.timeline-clip {
+  flex: 0 0 190px;
+  padding: 9px;
+  border-left: 3px solid rgba(202, 151, 82, 0.65);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.timeline-clip img,
+.timeline-clip video {
+  width: 100%;
+  height: 90px;
+  margin-bottom: 8px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #050505;
+}
+.timeline-clip strong,
+.timeline-clip span,
+.timeline-clip em {
+  display: block;
+}
+.timeline-clip span,
+.timeline-clip em {
+  margin-top: 4px;
+  color: #77746d;
+  font-size: 11px;
 }
 .doctor-report {
   display: grid;

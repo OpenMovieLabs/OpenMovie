@@ -171,6 +171,36 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('story.get'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('story.update'),
+    params: z.object({
+      premise: z.string().max(20_000),
+      themes: z.array(z.string().max(200)).max(100),
+      world: z.string().max(20_000),
+      rules: z.array(z.string().max(500)).max(200),
+      expectedRevisionId: z.string().nullable(),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('timeline.get'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('timeline.assemble'),
+    params: z.object({
+      expectedRevisionId: z.string().nullable(),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('object.import'),
     params: z.object({ path: z.string().min(1) }),
   }),
@@ -191,6 +221,48 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   z.object({
     id: commandIdSchema,
     method: z.literal('evaluation.list'),
+    params: z.object({ takeId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('feedback.create'),
+    params: z.object({
+      targetType: z.enum(['project', 'scene', 'shot', 'take', 'revision']),
+      targetId: z.string().min(1),
+      body: z.string().trim().min(1).max(10_000),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('feedback.list'),
+    params: z.object({
+      targetType: z.enum(['project', 'scene', 'shot', 'take', 'revision']).optional(),
+      targetId: z.string().min(1).optional(),
+      status: z.enum(['open', 'resolved']).optional(),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('feedback.resolve'),
+    params: z.object({
+      feedbackId: z.string().min(1),
+      revisionId: z.string().min(1).optional(),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('analysis.create_task'),
+    params: z.object({
+      takeId: z.string().min(1),
+      providerId: z.string().min(1),
+      model: z.string().min(1),
+      prompt: z.string().trim().min(1).max(10_000),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('analysis.list'),
     params: z.object({ takeId: z.string().min(1) }),
   }),
   z.object({
@@ -398,6 +470,30 @@ export const evaluationRecordSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const feedbackRecordSchema = z.object({
+  id: z.string(),
+  targetType: z.enum(['project', 'scene', 'shot', 'take', 'revision']),
+  targetId: z.string(),
+  body: z.string(),
+  status: z.enum(['open', 'resolved']),
+  authorId: z.string(),
+  resolutionRevisionId: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const analysisRecordSchema = z.object({
+  id: z.string(),
+  takeId: z.string(),
+  kind: z.enum(['image', 'video']),
+  providerId: z.string(),
+  modelId: z.string(),
+  summary: z.string(),
+  evidence: z.array(z.record(z.string(), z.unknown())),
+  provenance: z.record(z.string(), z.unknown()),
+  createdAt: z.string().datetime(),
+});
+
 export const taskStepSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -476,6 +572,8 @@ export type StoredObject = z.infer<typeof storedObjectSchema>;
 export type DoctorReport = z.infer<typeof doctorReportSchema>;
 export type TakeRecord = z.infer<typeof takeRecordSchema>;
 export type EvaluationRecord = z.infer<typeof evaluationRecordSchema>;
+export type FeedbackRecord = z.infer<typeof feedbackRecordSchema>;
+export type AnalysisRecord = z.infer<typeof analysisRecordSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEvent = z.infer<typeof taskEventSchema>;
 export type HarnessHealth = z.infer<typeof harnessHealthSchema>;

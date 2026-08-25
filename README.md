@@ -14,7 +14,7 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 ## Status
 
-Active implementation. The desktop vertical slice now covers portable Movie IR projects, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers, asynchronous video-provider jobs, immutable image/video Takes, deterministic evaluations, Take selection, structured diffs, and creative branches.
+Active implementation. The desktop vertical slice now covers portable Movie IR projects, Brief/Story Bible editing, Scene/Shot authoring, deterministic Timeline assembly, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers, asynchronous video-provider jobs, immutable image/video Takes, multimodal Take analysis, deterministic evaluations, structured feedback, Take selection, structured diffs, and creative branches.
 
 ## Documentation
 
@@ -50,7 +50,9 @@ pnpm check
 pnpm dev
 ```
 
-Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Movie IR entity commits, targeted Fake Provider generation, Object Store import, Take and evaluation persistence, and Harness detection.
+Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Story and Movie IR commits, targeted Fake Provider generation, Object Store import, Take/evaluation/analysis persistence, Timeline assembly, and Harness detection.
+
+Video analysis samples deterministic keyframes with FFmpeg and submits those frames through the configured vision-capable Provider. Development builds discover `ffmpeg` on `PATH`; set `OPENMOVIE_FFMPEG_PATH` to an explicit executable when necessary. Image analysis does not require FFmpeg.
 
 ### CLI and project integrity
 
@@ -78,7 +80,7 @@ For external Codex, Claude Code, or any MCP host, start the standalone stdio ser
 pnpm mcp --project /absolute/path/to/MyMovie
 ```
 
-The MCP server exposes project/entity reads, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. It never exposes Provider API keys.
+The MCP server exposes project/entity reads, Story editing, Timeline assembly, Take/evaluation/analysis/feedback inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. It never exposes Provider API keys.
 
 ## Repository
 

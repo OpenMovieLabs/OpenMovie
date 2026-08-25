@@ -5,10 +5,12 @@ import { pathToFileURL } from 'node:url';
 
 import {
   PROTOCOL_VERSION,
+  analysisRecordSchema,
   branchRecordSchema,
   coreHealthSchema,
   doctorReportSchema,
   fileDiffSchema,
+  feedbackRecordSchema,
   evaluationRecordSchema,
   harnessHealthSchema,
   initializeResultSchema,
@@ -19,7 +21,13 @@ import {
   taskEventSchema,
   takeRecordSchema,
 } from '@openmovie/contracts';
-import { movieEntitySchema } from '@openmovie/movie-ir';
+import {
+  briefSchema,
+  movieEntitySchema,
+  screenplaySchema,
+  storyBibleSchema,
+  timelineSchema,
+} from '@openmovie/movie-ir';
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } from 'electron';
 
 import { CoreClient } from './core-client.js';
@@ -177,6 +185,7 @@ void app
         }),
       );
       activeProjectRoot = created.root;
+      secrets?.rememberProject(created.root, created.title);
       return created;
     });
     ipcMain.handle('openmovie:project-open', async () => {
@@ -190,7 +199,29 @@ void app
         await core?.request({ method: 'project.open', params: { path, takeoverStaleLock: false } }),
       );
       activeProjectRoot = opened.root;
+      secrets?.rememberProject(opened.root, opened.title);
       return opened;
+    });
+    ipcMain.handle('openmovie:project-recent-list', () => secrets?.listRecentProjects() ?? []);
+    ipcMain.handle('openmovie:project-open-recent', async (_event, path: unknown) => {
+      if (typeof path !== 'string') throw new Error('Project path is required');
+      if (!secrets?.listRecentProjects().some((item) => item.path === path)) {
+        throw new Error('Project is not in Recent Projects');
+      }
+      try {
+        const opened = projectSummarySchema.parse(
+          await core?.request({
+            method: 'project.open',
+            params: { path, takeoverStaleLock: false },
+          }),
+        );
+        activeProjectRoot = opened.root;
+        secrets.rememberProject(opened.root, opened.title);
+        return opened;
+      } catch (error) {
+        secrets.forgetProject(path);
+        throw error;
+      }
     });
     ipcMain.handle('openmovie:project-summary', async () =>
       projectSummarySchema.parse(
@@ -220,9 +251,11 @@ void app
           },
         }),
       );
-      return projectSummarySchema.parse(
+      const renamed = projectSummarySchema.parse(
         await core?.request({ method: 'project.get_summary', params: {} }),
       );
+      secrets?.rememberProject(renamed.root, renamed.title);
+      return renamed;
     });
     ipcMain.handle('openmovie:revision-list', async () =>
       revisionRecordSchema
@@ -368,6 +401,60 @@ void app
         );
       },
     );
+    ipcMain.handle('openmovie:story-get', async () => {
+      const value = await core?.request({ method: 'story.get', params: {} });
+      if (typeof value !== 'object' || value === null) throw new Error('Invalid Story response');
+      return {
+        brief: briefSchema.parse('brief' in value ? value.brief : undefined),
+        bible: storyBibleSchema.parse('bible' in value ? value.bible : undefined),
+        screenplay: screenplaySchema.parse('screenplay' in value ? value.screenplay : undefined),
+      };
+    });
+    ipcMain.handle('openmovie:story-update', async (_event, raw: unknown) => {
+      if (typeof raw !== 'object' || raw === null) throw new Error('Invalid Story update');
+      const input = raw as Record<string, unknown>;
+      const summary = projectSummarySchema.parse(
+        await core?.request({ method: 'project.get_summary', params: {} }),
+      );
+      const value = await core?.request({
+        method: 'story.update',
+        params: {
+          premise: typeof input.premise === 'string' ? input.premise : '',
+          themes: Array.isArray(input.themes)
+            ? input.themes.filter((item): item is string => typeof item === 'string')
+            : [],
+          world: typeof input.world === 'string' ? input.world : '',
+          rules: Array.isArray(input.rules)
+            ? input.rules.filter((item): item is string => typeof item === 'string')
+            : [],
+          expectedRevisionId: summary.currentRevisionId,
+          authorId: 'user_local',
+        },
+      });
+      if (typeof value !== 'object' || value === null) throw new Error('Invalid Story response');
+      return {
+        brief: briefSchema.parse('brief' in value ? value.brief : undefined),
+        bible: storyBibleSchema.parse('bible' in value ? value.bible : undefined),
+        revision: revisionRecordSchema.parse('revision' in value ? value.revision : undefined),
+      };
+    });
+    ipcMain.handle('openmovie:timeline-get', async () =>
+      timelineSchema.parse(await core?.request({ method: 'timeline.get', params: {} })),
+    );
+    ipcMain.handle('openmovie:timeline-assemble', async () => {
+      const summary = projectSummarySchema.parse(
+        await core?.request({ method: 'project.get_summary', params: {} }),
+      );
+      const value = await core?.request({
+        method: 'timeline.assemble',
+        params: { expectedRevisionId: summary.currentRevisionId, authorId: 'user_local' },
+      });
+      if (typeof value !== 'object' || value === null) throw new Error('Invalid Timeline response');
+      return {
+        timeline: timelineSchema.parse('timeline' in value ? value.timeline : undefined),
+        revision: revisionRecordSchema.parse('revision' in value ? value.revision : undefined),
+      };
+    });
     ipcMain.handle(
       'openmovie:task-run',
       async (
@@ -516,6 +603,105 @@ void app
         .array()
         .parse(await core?.request({ method: 'evaluation.list', params: { takeId } }));
     });
+    ipcMain.handle(
+      'openmovie:feedback-list',
+      async (_event, targetType: unknown, targetId: unknown, status: unknown) => {
+        if (
+          !['project', 'scene', 'shot', 'take', 'revision'].includes(String(targetType)) ||
+          typeof targetId !== 'string'
+        ) {
+          throw new Error('Invalid Feedback target');
+        }
+        if (status !== undefined && status !== 'open' && status !== 'resolved') {
+          throw new Error('Invalid Feedback status');
+        }
+        return feedbackRecordSchema.array().parse(
+          await core?.request({
+            method: 'feedback.list',
+            params: {
+              targetType: targetType as 'project' | 'scene' | 'shot' | 'take' | 'revision',
+              targetId,
+              ...(status ? { status } : {}),
+            },
+          }),
+        );
+      },
+    );
+    ipcMain.handle(
+      'openmovie:feedback-create',
+      async (_event, targetType: unknown, targetId: unknown, body: unknown) => {
+        if (
+          !['project', 'scene', 'shot', 'take', 'revision'].includes(String(targetType)) ||
+          typeof targetId !== 'string' ||
+          typeof body !== 'string' ||
+          !body.trim()
+        ) {
+          throw new Error('Invalid Feedback input');
+        }
+        return feedbackRecordSchema.parse(
+          await core?.request({
+            method: 'feedback.create',
+            params: {
+              targetType: targetType as 'project' | 'scene' | 'shot' | 'take' | 'revision',
+              targetId,
+              body: body.trim(),
+              authorId: 'user_local',
+            },
+          }),
+        );
+      },
+    );
+    ipcMain.handle('openmovie:analysis-list', async (_event, takeId: unknown) => {
+      if (typeof takeId !== 'string') throw new Error('Take ID is required');
+      return analysisRecordSchema
+        .array()
+        .parse(await core?.request({ method: 'analysis.list', params: { takeId } }));
+    });
+    ipcMain.handle(
+      'openmovie:analysis-run',
+      async (_event, takeId: unknown, providerProfileId: unknown, prompt: unknown) => {
+        if (typeof takeId !== 'string' || typeof prompt !== 'string' || !prompt.trim()) {
+          throw new Error('Take and analysis prompt are required');
+        }
+        let providerId = 'fake';
+        let model = 'fake-vision-v1';
+        if (typeof providerProfileId === 'string' && providerProfileId !== 'fake') {
+          if (!secrets) throw new Error('Secret Store is unavailable');
+          const profile = secrets
+            .listProviderProfiles()
+            .find((item) => item.id === providerProfileId);
+          if (!profile || profile.protocol !== 'openai_chat') {
+            throw new Error('Analysis requires an OpenAI-compatible Chat / Vision Provider');
+          }
+          const apiKey = await secrets.get(profile.secretId);
+          await core?.request({
+            method: 'provider.configure_openai_compatible',
+            params: {
+              id: profile.id,
+              baseUrl: profile.baseUrl,
+              apiKey,
+              imageGeneration: false,
+            },
+          });
+          providerId = profile.id;
+          model = profile.model;
+        }
+        const task = taskSchema.parse(
+          await core?.request({
+            method: 'analysis.create_task',
+            params: { takeId, providerId, model, prompt: prompt.trim() },
+          }),
+        );
+        void core
+          ?.request({ method: 'task.run', params: { taskId: task.id } }, 15 * 60_000)
+          .catch((error: unknown) => {
+            process.stderr.write(
+              `[analysis] Background analysis failed: ${error instanceof Error ? error.message : String(error)}\n`,
+            );
+          });
+        return task;
+      },
+    );
     ipcMain.handle('openmovie:task-list', async () =>
       taskSchema.array().parse(await core?.request({ method: 'task.list', params: {} })),
     );
@@ -689,6 +875,26 @@ void app
           .parse(
             await core.request({ method: 'evaluation.list', params: { takeId: firstTake.id } }),
           );
+        const analysisTask = taskSchema.parse(
+          await core.request({
+            method: 'analysis.create_task',
+            params: {
+              takeId: firstTake.id,
+              providerId: 'fake',
+              model: 'fake-vision-v1',
+              prompt: 'Verify the opening frame',
+            },
+          }),
+        );
+        const completedAnalysis = taskSchema.parse(
+          await core.request({ method: 'task.run', params: { taskId: analysisTask.id } }),
+        );
+        if (completedAnalysis.status !== 'succeeded') {
+          throw new Error(`Smoke analysis did not succeed: ${completedAnalysis.status}`);
+        }
+        analysisRecordSchema
+          .array()
+          .parse(await core.request({ method: 'analysis.list', params: { takeId: firstTake.id } }));
         await core.request({ method: 'project.close', params: {} });
       } finally {
         await rm(temporaryRoot, { recursive: true, force: true });
