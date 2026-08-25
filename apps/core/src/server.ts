@@ -26,7 +26,12 @@ import {
 } from '@openmovie/agent-gateway';
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { agentPlanSchema, movieEntitySchema, type AgentPlan } from '@openmovie/movie-ir';
-import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
+import {
+  BuiltInTakeEvaluator,
+  compareEvaluationRuns,
+  EvaluationEngine,
+  TechnicalMediaEvaluator,
+} from '@openmovie/eval-engine';
 import {
   FfmpegFrameExtractor,
   FfmpegMediaAnalyzer,
@@ -59,6 +64,7 @@ export class CoreServer {
     const fake = new FakeProvider();
     this.providers.register(fake);
     this.evaluations.register(new BuiltInTakeEvaluator());
+    this.evaluations.register(new TechnicalMediaEvaluator());
     this.tasks = this.createTaskEngine();
   }
 
@@ -151,11 +157,13 @@ export class CoreServer {
       const provider = this.providers.get(providerId);
       if (!provider.generateImage)
         throw new Error(`Provider cannot generate images: ${providerId}`);
+      const width = typeof input.width === 'number' ? input.width : 1024;
+      const height = typeof input.height === 'number' ? input.height : 1024;
       const generated = await provider.generateImage({
         model: typeof input.model === 'string' ? input.model : 'fake-image-v1',
         prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
-        width: typeof input.width === 'number' ? input.width : 1024,
-        height: typeof input.height === 'number' ? input.height : 1024,
+        width,
+        height,
         signal: context.signal,
       });
       const object = await project.objects.importBytes(generated.bytes, 'generated.png');
@@ -165,7 +173,12 @@ export class CoreServer {
           object,
           runId: context.task.id,
           provider: { providerId, model: generated.model },
-          generation: { requestHash: generated.requestHash, prompt: context.task.goal },
+          generation: {
+            requestHash: generated.requestHash,
+            prompt: context.task.goal,
+            width,
+            height,
+          },
         });
         return {
           object,
@@ -206,6 +219,7 @@ export class CoreServer {
         typeof context.step.output.providerJobId === 'string'
           ? context.step.output.providerJobId
           : undefined;
+      const durationSeconds = typeof input.durationSeconds === 'number' ? input.durationSeconds : 4;
       let job: ProviderJob | undefined;
       if (checkpoint) {
         try {
@@ -219,7 +233,7 @@ export class CoreServer {
           model: typeof input.model === 'string' ? input.model : 'fake-video-v1',
           prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
           mode: 'text_to_video',
-          durationSeconds: typeof input.durationSeconds === 'number' ? input.durationSeconds : 4,
+          durationSeconds,
           signal: context.signal,
         });
         context.checkpoint({ providerJobId: job.id, providerId });
@@ -246,7 +260,11 @@ export class CoreServer {
         object,
         runId: context.task.id,
         provider: { providerId, model: generated.model, jobId: job.id },
-        generation: { requestHash: generated.requestHash, prompt: context.task.goal },
+        generation: {
+          requestHash: generated.requestHash,
+          prompt: context.task.goal,
+          durationUs: Math.round(durationSeconds * 1_000_000),
+        },
       });
       return {
         object,
@@ -981,16 +999,53 @@ export class CoreServer {
         provider: take.provider,
         generation: take.generation,
       },
+      delivery: {
+        width: project.manifest.delivery.width,
+        height: project.manifest.delivery.height,
+      },
+      technical: {
+        ...(typeof take.generation.width === 'number' ? { width: take.generation.width } : {}),
+        ...(typeof take.generation.height === 'number' ? { height: take.generation.height } : {}),
+        ...(typeof take.generation.durationUs === 'number'
+          ? { durationUs: take.generation.durationUs }
+          : {}),
+      },
     });
+    const findings = evaluation.results.flatMap((result) =>
+      result.findings.map((finding) => ({ ...finding, evaluator: result.evaluator })),
+    );
+    const baseline = project.media
+      .listTakes(shotId)
+      .filter((item) => item.id !== take.id)
+      .flatMap((item) => project.media.listEvaluations(item.id))
+      .at(0);
+    const regression = compareEvaluationRuns(baseline, {
+      id: take.id,
+      status: evaluation.status,
+      score: evaluation.score,
+      findings,
+    });
+    if (regression.regressed) {
+      findings.push({
+        code: 'REVISION_EVALUATION_REGRESSION',
+        severity: 'warning',
+        message: 'This Take regressed relative to the previous evaluated Take for the Shot.',
+        evidence: { baselineEvaluationId: baseline?.id, ...regression },
+        evaluator: 'openmovie.regression.v1',
+      });
+    }
     return project.media.recordEvaluation({
       takeId: take.id,
       evaluator: 'openmovie.aggregate.v1',
-      status: evaluation.status,
+      status:
+        regression.regressed && evaluation.status === 'passed' ? 'warning' : evaluation.status,
       score: evaluation.score,
-      findings: evaluation.results.flatMap((result) =>
-        result.findings.map((finding) => ({ ...finding, evaluator: result.evaluator })),
-      ),
-      provenance: { deterministic: true, evaluatorCount: evaluation.results.length },
+      findings,
+      provenance: {
+        deterministic: true,
+        evaluatorCount: evaluation.results.length,
+        ...(baseline ? { baselineEvaluationId: baseline.id, regression } : {}),
+      },
     });
   }
 

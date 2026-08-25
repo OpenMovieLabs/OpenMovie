@@ -323,11 +323,11 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 
 ### 9.4 Evaluation
 
-- 静态验证。
-- Media Technical。
-- Character Similarity Port。
-- Evidence 和 Time Range。
-- Revision Regression。
+- [x] 静态验证。
+- [x] Media Technical。
+- [x] Character Similarity Port。
+- [x] Evidence 和 Time Range。
+- [x] Revision Regression。
 
 ### 9.5 Feedback Loop
 

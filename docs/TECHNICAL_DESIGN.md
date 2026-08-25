@@ -1459,6 +1459,10 @@ interface PublicError {
 - Provider Gateway 暴露可选 `audio.transcribe` Port；支持该能力的分析 Provider 会接收本地抽取的
   WAV，并把带起止时间的 Transcript Segment 写入同一 Analysis Evidence。Provider 不声明能力时，
   视频视觉分析仍可独立完成。
+- Evaluation Engine 聚合可复现性规则与媒体技术规则，输出带 JSON Pointer 或微秒 Time Range 的
+  Findings。每个新 Take 与同 Shot 最近一次 Evaluation 比较状态、分数和新增 Finding Code；回归会
+  产生 `REVISION_EVALUATION_REGRESSION`。角色一致性通过 `CharacterSimilarityPort` 保留可替换的
+  本地或远程实现边界。
 - Schema 升级和备份恢复。
 
 ### 22.4 Desktop E2E
