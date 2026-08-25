@@ -21,6 +21,8 @@ export type OpenMovieDesktopApi = {
   listSecrets: () => Promise<SecretMetadata[]>;
   setSecret: (id: string, label: string, value: string) => Promise<SecretMetadata>;
   deleteSecret: (id: string) => Promise<boolean>;
+  listProviders: () => Promise<ProviderProfile[]>;
+  saveProvider: (input: SaveProviderInput) => Promise<ProviderProfile>;
 };
 
 export type TaskRunResult = {
@@ -35,6 +37,23 @@ export type SecretMetadata = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ProviderProfile = {
+  id: string;
+  label: string;
+  baseUrl: string;
+  protocol: 'openai_chat' | 'openai_responses' | 'custom';
+  model: string;
+  secretId: string;
+  hasSecret: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SaveProviderInput = Pick<
+  ProviderProfile,
+  'id' | 'label' | 'baseUrl' | 'protocol' | 'model'
+> & { apiKey: string };
 
 const api: OpenMovieDesktopApi = {
   initialize: () => ipcRenderer.invoke('openmovie:initialize') as Promise<InitializeResult>,
@@ -55,6 +74,9 @@ const api: OpenMovieDesktopApi = {
   setSecret: (id, label, value) =>
     ipcRenderer.invoke('openmovie:secret-set', id, label, value) as Promise<SecretMetadata>,
   deleteSecret: (id) => ipcRenderer.invoke('openmovie:secret-delete', id) as Promise<boolean>,
+  listProviders: () => ipcRenderer.invoke('openmovie:provider-list') as Promise<ProviderProfile[]>,
+  saveProvider: (input) =>
+    ipcRenderer.invoke('openmovie:provider-save', input) as Promise<ProviderProfile>,
 };
 
 contextBridge.exposeInMainWorld('openMovie', api);

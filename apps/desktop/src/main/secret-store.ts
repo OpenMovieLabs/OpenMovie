@@ -13,6 +13,18 @@ export type SecretCrypto = {
   decrypt: (ciphertext: Buffer) => Promise<{ plaintext: string; shouldReEncrypt: boolean }>;
 };
 
+export type ProviderProfile = {
+  id: string;
+  label: string;
+  baseUrl: string;
+  protocol: 'openai_chat' | 'openai_responses' | 'custom';
+  model: string;
+  secretId: string;
+  hasSecret: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class EncryptedSecretStore {
   private readonly database: Database.Database;
 
@@ -28,6 +40,16 @@ export class EncryptedSecretStore {
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         ciphertext BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS provider_profiles (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        protocol TEXT NOT NULL,
+        model TEXT NOT NULL,
+        secret_id TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -80,6 +102,71 @@ export class EncryptedSecretStore {
 
   delete(id: string): boolean {
     return this.database.prepare('DELETE FROM secrets WHERE id = ?').run(id).changes > 0;
+  }
+
+  setProviderProfile(
+    input: Omit<ProviderProfile, 'hasSecret' | 'createdAt' | 'updatedAt'>,
+  ): ProviderProfile {
+    if (!/^[a-z][a-z0-9_.-]{2,127}$/.test(input.id)) throw new Error('Invalid provider ID');
+    const url = new URL(input.baseUrl);
+    if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      throw new Error('Provider endpoint must use HTTPS unless it is localhost');
+    }
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `INSERT INTO provider_profiles(
+          id, label, base_url, protocol, model, secret_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET label = excluded.label, base_url = excluded.base_url,
+          protocol = excluded.protocol, model = excluded.model, secret_id = excluded.secret_id,
+          updated_at = excluded.updated_at`,
+      )
+      .run(
+        input.id,
+        input.label,
+        url.toString(),
+        input.protocol,
+        input.model,
+        input.secretId,
+        now,
+        now,
+      );
+    const profile = this.listProviderProfiles().find((item) => item.id === input.id);
+    if (!profile) throw new Error('Provider profile was not saved');
+    return profile;
+  }
+
+  listProviderProfiles(): ProviderProfile[] {
+    const rows = this.database
+      .prepare(
+        `SELECT p.id, p.label, p.base_url, p.protocol, p.model, p.secret_id,
+          p.created_at, p.updated_at, s.id IS NOT NULL AS has_secret
+         FROM provider_profiles p LEFT JOIN secrets s ON s.id = p.secret_id
+         ORDER BY p.label`,
+      )
+      .all() as Array<{
+      id: string;
+      label: string;
+      base_url: string;
+      protocol: ProviderProfile['protocol'];
+      model: string;
+      secret_id: string;
+      created_at: string;
+      updated_at: string;
+      has_secret: number;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      baseUrl: row.base_url,
+      protocol: row.protocol,
+      model: row.model,
+      secretId: row.secret_id,
+      hasSecret: row.has_secret === 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   close(): void {

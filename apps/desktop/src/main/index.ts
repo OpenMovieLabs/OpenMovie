@@ -215,6 +215,32 @@ void app
       if (typeof id !== 'string') throw new Error('Invalid secret ID');
       return secrets?.delete(id) ?? false;
     });
+    ipcMain.handle('openmovie:provider-list', () => secrets?.listProviderProfiles() ?? []);
+    ipcMain.handle('openmovie:provider-save', async (_event, value: unknown) => {
+      if (typeof value !== 'object' || value === null) throw new Error('Invalid provider profile');
+      const input = value as Record<string, unknown>;
+      const required = ['id', 'label', 'baseUrl', 'protocol', 'model', 'apiKey'] as const;
+      if (required.some((key) => typeof input[key] !== 'string')) {
+        throw new Error('Provider profile fields must be strings');
+      }
+      if (!secrets) throw new Error('Secret Store is unavailable');
+      const id = String(input.id);
+      const secretId = `provider.${id}`;
+      if (String(input.apiKey))
+        await secrets.set(secretId, String(input.label), String(input.apiKey));
+      const protocol = String(input.protocol);
+      if (protocol !== 'openai_chat' && protocol !== 'openai_responses' && protocol !== 'custom') {
+        throw new Error('Unsupported provider protocol');
+      }
+      return secrets.setProviderProfile({
+        id,
+        label: String(input.label),
+        baseUrl: String(input.baseUrl),
+        protocol,
+        model: String(input.model),
+        secretId,
+      });
+    });
 
     await initialize();
     if (process.env.OPENMOVIE_SMOKE_TEST === '1') {

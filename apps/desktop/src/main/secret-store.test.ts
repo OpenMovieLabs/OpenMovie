@@ -24,6 +24,15 @@ describe('EncryptedSecretStore', () => {
     });
     const canary = 'sk-secret-canary-never-log';
     await store.set('provider.openrouter', 'OpenRouter', canary);
+    const profile = store.setProviderProfile({
+      id: 'openrouter',
+      label: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1/',
+      protocol: 'openai_chat',
+      model: 'test/model',
+      secretId: 'provider.openrouter',
+    });
+    expect(profile.hasSecret).toBe(true);
     expect(store.list()[0]).not.toHaveProperty('value');
     expect(await store.get('provider.openrouter')).toBe(canary);
     store.close();

@@ -415,6 +415,42 @@ h1 {
   padding: 10px 14px;
   border-radius: 9px;
 }
+.settings-modal {
+  width: min(620px, 100%);
+}
+.provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.provider-row strong,
+.provider-row span {
+  display: block;
+}
+.provider-row div > span {
+  margin-top: 4px;
+  color: #6f6d67;
+  font-size: 11px;
+}
+.key-state {
+  color: #8b8881;
+  font-size: 11px;
+}
+.key-state.ready {
+  color: #82b98a;
+}
+.provider-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 22px;
+}
+.provider-form label:nth-child(2),
+.provider-form label:nth-child(4) {
+  grid-column: span 1;
+}
 
 @media (max-width: 760px) {
   .home {

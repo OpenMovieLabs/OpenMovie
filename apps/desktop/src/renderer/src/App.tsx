@@ -17,6 +17,7 @@ import type {
   RevisionRecord,
   Task,
 } from '@openmovie/contracts';
+import type { ProviderProfile } from '../../preload/index.js';
 
 type RuntimeState =
   | { kind: 'loading' }
@@ -29,6 +30,16 @@ export function App(): React.JSX.Element {
   const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showTask, setShowTask] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [providerForm, setProviderForm] = useState({
+    id: 'openrouter',
+    label: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1/',
+    protocol: 'openai_chat' as const,
+    model: '',
+    apiKey: '',
+  });
   const [title, setTitle] = useState('Untitled Movie');
   const [goal, setGoal] = useState('Create a cinematic establishing frame for the opening scene');
   const [lastTask, setLastTask] = useState<Task | null>(null);
@@ -109,6 +120,21 @@ export function App(): React.JSX.Element {
     });
   };
 
+  const openSettings = (): void => {
+    void run(async () => {
+      setProviders(await window.openMovie.listProviders());
+      setShowSettings(true);
+    });
+  };
+
+  const saveProvider = (): void => {
+    void run(async () => {
+      await window.openMovie.saveProvider(providerForm);
+      setProviders(await window.openMovie.listProviders());
+      setProviderForm((current) => ({ ...current, apiKey: '' }));
+    });
+  };
+
   return (
     <div className="app-shell">
       <header className="titlebar">
@@ -120,7 +146,7 @@ export function App(): React.JSX.Element {
           <span className="status-dot" />
           {runtime.kind === 'ready' ? `Core ${runtime.health.status}` : runtime.kind}
         </div>
-        <button className="icon-button" aria-label="Settings">
+        <button className="icon-button" aria-label="Settings" onClick={openSettings}>
           <Settings size={18} />
         </button>
       </header>
@@ -305,6 +331,95 @@ export function App(): React.JSX.Element {
               </button>
               <button className="primary" disabled={busy || !goal.trim()} onClick={runTask}>
                 Run task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showSettings && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setShowSettings(false)}
+        >
+          <div
+            className="modal settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <span className="section-label">SETTINGS</span>
+            <h2 id="settings-title">Model providers</h2>
+            {providers.map((provider) => (
+              <div className="provider-row" key={provider.id}>
+                <div>
+                  <strong>{provider.label}</strong>
+                  <span>{provider.model || provider.baseUrl}</span>
+                </div>
+                <span className={provider.hasSecret ? 'key-state ready' : 'key-state'}>
+                  {provider.hasSecret ? 'Key saved' : 'No key'}
+                </span>
+              </div>
+            ))}
+            <div className="provider-form">
+              <label>
+                Provider name
+                <input
+                  value={providerForm.label}
+                  onChange={(event) =>
+                    setProviderForm({ ...providerForm, label: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={providerForm.baseUrl}
+                  onChange={(event) =>
+                    setProviderForm({ ...providerForm, baseUrl: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Model
+                <input
+                  placeholder="model/name"
+                  value={providerForm.model}
+                  onChange={(event) =>
+                    setProviderForm({ ...providerForm, model: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                API Key
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Stored with system encryption"
+                  value={providerForm.apiKey}
+                  onChange={(event) =>
+                    setProviderForm({ ...providerForm, apiKey: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            {error && <div className="error-banner">{error}</div>}
+            <div className="modal-actions">
+              <button className="secondary" onClick={() => setShowSettings(false)}>
+                Close
+              </button>
+              <button
+                className="primary"
+                disabled={
+                  busy ||
+                  !providerForm.model ||
+                  (!providerForm.apiKey &&
+                    !providers.some((item) => item.id === providerForm.id && item.hasSecret))
+                }
+                onClick={saveProvider}
+              >
+                Save provider
               </button>
             </div>
           </div>
