@@ -168,6 +168,8 @@ MVP 先保持单一 Core 服务，达到明确扩展阈值后再拆分网络微�
 
 SQLite 驱动封装在 Storage Port 后。若 better-sqlite3 无法通过目标 Electron 版本的双平台打包门禁，可以替换驱动，但不得改变 Repository Contract 或 Project 格式。
 
+Open Project 时若运行数据库缺失，Core 先重建受控 `.openmovie` 目录和全部 Migration，再从已验证的 Movie IR 捕获一个新的 Recovery Revision。若数据库包含另一个 Project ID，则拒绝打开，避免把错误数据库静默绑定到当前文件树。该恢复只承诺源文件可读；完整运行历史依赖备份中的 SQLite 与 Object Store。
+
 ### 4.5 媒体
 
 - FFmpeg/FFprobe 通过参数数组调用。开发构建从 `PATH` 或 `OPENMOVIE_FFMPEG_PATH` 探测；公开发行包在 M6 固定并校验 Sidecar 版本。

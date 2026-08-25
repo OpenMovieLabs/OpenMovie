@@ -187,13 +187,34 @@ export class ProjectStore {
   static async open(rootInput: string, options: OpenProjectOptions = {}): Promise<ProjectStore> {
     const root = resolve(rootInput);
     const metadataRoot = join(root, '.openmovie');
-    const manifest = parseProjectManifest(await readFile(join(root, 'openmovie.yaml'), 'utf8'));
+    const manifestYaml = await readFile(join(root, 'openmovie.yaml'), 'utf8');
+    const manifest = parseProjectManifest(manifestYaml);
+    await Promise.all(
+      [
+        join(metadataRoot, 'objects', 'sha256'),
+        join(metadataRoot, 'cache'),
+        join(metadataRoot, 'previews'),
+        join(metadataRoot, 'temp'),
+        join(metadataRoot, 'locks'),
+        join(metadataRoot, 'logs'),
+      ].map((path) => mkdir(path, { recursive: true })),
+    );
     const lock = await ProjectLock.acquire(
       join(metadataRoot, 'locks', 'core.lock'),
       options.takeoverStaleLock,
     );
     try {
       const database = openProjectDatabase(join(metadataRoot, 'state.sqlite'));
+      const projectRows = database.prepare('SELECT id FROM projects ORDER BY id').all() as Array<{
+        id: string;
+      }>;
+      if (!projectRows.some((row) => row.id === manifest.project.id)) {
+        if (projectRows.length > 0) {
+          database.close();
+          throw new Error('Runtime database belongs to a different OpenMovie project');
+        }
+        initializeRecoveredState(database, manifest, manifestYaml);
+      }
       const store = new ProjectStore(root, manifest, database, lock);
       await store.revisions.recover();
       await store.revisions.initializeCurrentSnapshot();
@@ -220,4 +241,38 @@ export class ProjectStore {
   private assertOpen(): void {
     if (this.closed) throw new Error('ProjectStore is closed');
   }
+}
+
+function initializeRecoveredState(
+  database: Database.Database,
+  manifest: ProjectManifest,
+  manifestYaml: string,
+): void {
+  const now = new Date().toISOString();
+  const revisionId = createId('rev');
+  const manifestHash = digest(manifestYaml);
+  database.transaction(() => {
+    database
+      .prepare(
+        `INSERT INTO projects(id, title, manifest_hash, current_revision_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        manifest.project.id,
+        manifest.project.title,
+        manifestHash,
+        revisionId,
+        manifest.project.created_at,
+        now,
+      );
+    database
+      .prepare(
+        `INSERT INTO revisions(
+          id, project_id, parent_id, status, author_type, author_id, message,
+          patch_json, snapshot_yaml, manifest_hash, branch, created_at
+         ) VALUES (?, ?, NULL, 'committed', 'system', 'openmovie_recovery',
+          'Recover runtime state from Movie IR', '[]', ?, ?, 'main', ?)`,
+      )
+      .run(revisionId, manifest.project.id, manifestYaml, manifestHash, now);
+  })();
 }

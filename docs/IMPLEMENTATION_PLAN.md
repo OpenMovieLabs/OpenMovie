@@ -359,6 +359,8 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 - SBOM、依赖扫描和安全报告渠道。
 - 完整用户与开发文档。
 
+当前已具备崩溃 Revision Journal 恢复、陈旧写锁显式接管、完整 Project 导出、深度 Doctor，以及运行数据库缺失时从 Movie IR 重建最小状态。数据库跨项目 ID 时拒绝静默绑定；Take/Task/Feedback 等不可从源文件推导的数据必须依靠完整导出备份。
+
 Exit Criteria 使用 SECURITY.md 的 Security Gate 和 PRODUCT_DESIGN.md 的 MVP 验收。
 
 ## 11. 第一批 Issues
@@ -463,7 +465,7 @@ Nightly：
 必须建立：
 
 - minimal-project。
-- three-shot-continuity。
+- three-shot-continuity（已由 `openmovie example` 确定性生成并进入 CLI 集成测试）。
 - malformed-yaml。
 - future-schema-version。
 - missing-object。

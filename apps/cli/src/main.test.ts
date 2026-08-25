@@ -43,4 +43,19 @@ describe('OpenMovie CLI', () => {
     expect(await runCli(['doctor', project, '--json'], diagnosed.io)).toBe(2);
     expect(JSON.parse(diagnosed.output[0] ?? '{}')).toMatchObject({ status: 'failed' });
   });
+
+  it('creates a complete three-shot continuity example with comparison Takes', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-cli-example-'));
+    const project = join(parent, 'continuity');
+    const created = capture();
+    expect(await runCli(['example', project, '--json'], created.io)).toBe(0);
+    expect(JSON.parse(created.output[0] ?? '{}')).toMatchObject({
+      title: 'Three-Shot Continuity',
+      counts: { characters: 1, scenes: 1, shots: 3, takes: 6 },
+    });
+
+    const diagnosed = capture();
+    expect(await runCli(['doctor', project, '--deep', '--json'], diagnosed.io)).toBe(0);
+    expect(JSON.parse(diagnosed.output[0] ?? '{}')).toMatchObject({ status: 'healthy' });
+  });
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,6 +21,32 @@ describe('ProjectStore', () => {
     const reopened = await ProjectStore.open(root);
     expect(reopened.revisions.list()).toHaveLength(1);
     await reopened.close();
+  });
+
+  it('rebuilds missing runtime state from the portable Movie IR source tree', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-recovered-state-'));
+    const root = join(parent, 'movie');
+    const project = await ProjectStore.create(root, { title: 'Recoverable' });
+    const scene = await project.movies.createScene({
+      title: 'Persisted in YAML',
+      expectedRevisionId: project.revisions.currentRevisionId(),
+      authorId: 'user_local',
+    });
+    await project.close();
+    await rename(
+      join(root, '.openmovie', 'state.sqlite'),
+      join(root, '.openmovie', 'state.sqlite.lost'),
+    );
+
+    const recovered = await ProjectStore.open(root);
+    const recoveredScene = await recovered.movies.read('scene', scene.entity.id);
+    expect(recoveredScene.type === 'scene' && recoveredScene.title).toBe('Persisted in YAML');
+    expect(recovered.revisions.list()).toMatchObject([
+      { authorId: 'openmovie_recovery', message: 'Recover runtime state from Movie IR' },
+    ]);
+    expect(await recovered.revisions.workingChanges()).toEqual([]);
+    expect((await recovered.doctor.run()).status).toBe('healthy');
+    await recovered.close();
   });
 
   it('deduplicates objects by SHA-256', async () => {

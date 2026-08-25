@@ -65,9 +65,12 @@ pnpm cli doctor /absolute/path/to/MyMovie --deep
 pnpm cli summary /absolute/path/to/MyMovie --json
 pnpm cli export /absolute/path/to/MyMovie /absolute/path/to/MyMovie-export
 pnpm cli renders /absolute/path/to/MyMovie --json
+pnpm cli example /absolute/path/to/three-shot-continuity --json
 ```
 
 Project Doctor validates Movie IR schemas and references, selected Takes, SQLite integrity, content-addressed objects, and working changes. The same checks are available in Desktop under **Tests**.
+
+Movie IR YAML remains the portable source of truth. If `.openmovie/state.sqlite` is missing, opening the project rebuilds a minimal runtime database and a recovery Revision from the validated YAML tree. Revision history, Take provenance, feedback, and task history require the original database, so use `openmovie export` for complete backups.
 
 Generated image and video Takes are previewed through a restricted `openmovie-artifact` protocol. It resolves only SHA-256 objects inside the currently open project and does not expose arbitrary local file paths to the Renderer.
 

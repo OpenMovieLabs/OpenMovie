@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { cp } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -20,6 +21,7 @@ const help = `OpenMovie CLI
 
 Usage:
   openmovie create <project> --title <title> [--locale zh-CN]
+  openmovie example <project> [--title <title>] [--locale zh-CN]
   openmovie summary <project> [--json]
   openmovie doctor <project> [--deep] [--json]
   openmovie entities <project> <character|scene|shot> [--json]
@@ -42,6 +44,21 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
       const locale = option(argv, '--locale');
       const project = await ProjectStore.create(path, {
         title,
+        ...(locale ? { locale } : {}),
+      });
+      try {
+        print(io, await summary(project), hasFlag(argv, '--json'));
+      } finally {
+        await project.close();
+      }
+      return 0;
+    }
+
+    if (command === 'example') {
+      const path = required(argv[1], 'Project path');
+      const locale = option(argv, '--locale');
+      const project = await createContinuityExample(path, {
+        title: option(argv, '--title') ?? 'Three-Shot Continuity',
         ...(locale ? { locale } : {}),
       });
       try {
@@ -157,6 +174,7 @@ function assertSeparatePaths(source: string, destination: string): void {
 
 async function summary(project: ProjectStore): Promise<Record<string, unknown>> {
   const manifest = await project.readManifest();
+  const shots = await project.movies.list('shot');
   return {
     id: manifest.project.id,
     title: manifest.project.title,
@@ -167,12 +185,126 @@ async function summary(project: ProjectStore): Promise<Record<string, unknown>> 
     counts: {
       characters: (await project.movies.list('character')).length,
       scenes: (await project.movies.list('scene')).length,
-      shots: (await project.movies.list('shot')).length,
+      shots: shots.length,
+      takes: shots.reduce((total, shot) => total + project.media.listTakes(shot.id).length, 0),
       revisions: project.revisions.list(10_000).length,
       renders: project.media.listTimelineRenders().length,
     },
   };
 }
+
+async function createContinuityExample(
+  path: string,
+  options: { title: string; locale?: string },
+): Promise<ProjectStore> {
+  const project = await ProjectStore.create(path, {
+    title: options.title,
+    ...(options.locale ? { locale: options.locale } : {}),
+  });
+  try {
+    let revisionId = project.revisions.currentRevisionId();
+    const story = await project.movies.updateStory({
+      premise: 'A courier follows a signal through a rain-lit station and finds its source.',
+      themes: ['trust', 'orientation', 'discovery'],
+      world: 'A near-future transit station during a citywide blackout.',
+      rules: [
+        'The courier moves screen-left to screen-right.',
+        'The amber signal remains the brightest motivated light.',
+        'Rain intensity and the courier wardrobe stay continuous.',
+      ],
+      expectedRevisionId: revisionId,
+      authorId: 'example_seed',
+    });
+    revisionId = story.revision.id;
+    const character = await project.movies.createCharacter({
+      name: 'The Courier',
+      appearance: 'Dark rain shell, silver messenger bag, short black hair',
+      expectedRevisionId: revisionId,
+      authorId: 'example_seed',
+    });
+    revisionId = character.revision.id;
+    const scene = await project.movies.createScene({
+      title: 'Signal on Platform Nine',
+      storyGoal: 'The courier chooses to follow the unknown signal.',
+      expectedRevisionId: revisionId,
+      authorId: 'example_seed',
+    });
+    revisionId = scene.revision.id;
+    const shotInputs = [
+      { durationUs: 3_000_000, framing: 'wide', movement: 'slow push' },
+      { durationUs: 2_000_000, framing: 'medium tracking', movement: 'track right' },
+      { durationUs: 2_500_000, framing: 'close-up', movement: 'static' },
+    ] as const;
+    const shots = [];
+    for (const shotInput of shotInputs) {
+      const created = await project.movies.createShot({
+        sceneId: scene.entity.id,
+        ...shotInput,
+        expectedRevisionId: revisionId,
+        authorId: 'example_seed',
+      });
+      revisionId = created.revision.id;
+      shots.push(created.entity);
+    }
+
+    for (const [index, shot] of shots.entries()) {
+      const object = await project.objects.importBytes(
+        Buffer.concat([continuityFixturePng, Buffer.from([index])]),
+        `continuity-shot-${index + 1}.png`,
+      );
+      for (const variant of ['fast', 'quality'] as const) {
+        const requestHash = createHash('sha256')
+          .update(`${shot.id}:${variant}:amber signal continuity`)
+          .digest('hex');
+        const take = await project.media.createTake({
+          shotId: shot.id,
+          object,
+          runId: 'example_seed',
+          provider: { providerId: `fake-${variant}`, model: `fixture-${variant}-v1` },
+          generation: { requestHash, prompt: 'Preserve screen direction and amber key light.' },
+        });
+        project.media.recordEvaluation({
+          takeId: take.id,
+          evaluator: 'example.continuity.v1',
+          status: variant === 'quality' ? 'passed' : 'warning',
+          score: variant === 'quality' ? 0.94 : 0.72,
+          findings:
+            variant === 'quality'
+              ? []
+              : [
+                  {
+                    code: 'LIGHT_CONTINUITY_WEAK',
+                    severity: 'warning',
+                    message: 'Amber motivation is weaker than the selected comparison Take.',
+                  },
+                ],
+          provenance: { deterministic: true, fixture: 'three-shot-continuity' },
+        });
+        if (variant === 'quality') {
+          const selected = await project.media.selectTake({
+            takeId: take.id,
+            expectedRevisionId: revisionId,
+            authorId: 'example_seed',
+          });
+          revisionId = selected.revisionId;
+        }
+      }
+    }
+    await project.movies.assembleTimeline({
+      expectedRevisionId: revisionId,
+      authorId: 'example_seed',
+    });
+    return project;
+  } catch (error) {
+    await project.close();
+    throw error;
+  }
+}
+
+const continuityFixturePng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
 
 function print(io: CliIo, value: unknown, json: boolean): void {
   if (json || typeof value !== 'object' || value === null) {

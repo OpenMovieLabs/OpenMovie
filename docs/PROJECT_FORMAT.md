@@ -400,6 +400,8 @@ schema_migrations
 
 `revision_proposals` 是可丢弃的运行状态，不属于 Movie IR 真源。它保存经过 Schema 验证的 Direct Agent Plan、Base Revision、审阅状态、可选 Feedback 关联和接受后 Revision ID。Proposal 只能在 Base Revision 仍为当前项目头时被接受，全部动作在一个 Movie IR Revision 中原子提交。
 
+当 `.openmovie/state.sqlite` 完全缺失且目录中存在可验证的 Movie IR 时，Core 自动创建迁移后的空数据库，把当前 YAML 全树捕获为 `Recover runtime state from Movie IR` Revision，并恢复 `main` 分支。该路径保证 Story/Scene/Shot/Timeline 可重新打开，但不能从 YAML 推导已经丢失的 Task、Take Provenance、Feedback 或历史 Revision；完整恢复必须使用包含原数据库和 Object Store 的导出备份。
+
 具体 DDL 由首次实现迁移生成，但必须遵守：
 
 - 外键开启。
