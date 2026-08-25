@@ -1452,6 +1452,13 @@ interface PublicError {
 - Desktop 对 Object Store、源文件、SQLite 与可重建 Cache 分类计量；只允许用户清理
   `.openmovie/cache`、`.openmovie/previews` 和 `.openmovie/temp`。运行中 Task 会阻止清理，
   不可变 Object Store 不进入这一清理动作。
+- 视频分析先由本地 LGPL FFmpeg Sidecar 生成最长边 1280 的审阅代理、16 kHz 单声道 WAV、
+  有界 8 kHz 峰值波形和基于 scene score 的候选镜头边界。所有派生产物进入内容寻址
+  Object Store，Analysis Provenance 记录对象 URI、编码器、阈值和媒体探测结果；远程视觉
+  Provider 只接收确定性采样帧。
+- Provider Gateway 暴露可选 `audio.transcribe` Port；支持该能力的分析 Provider 会接收本地抽取的
+  WAV，并把带起止时间的 Transcript Segment 写入同一 Analysis Evidence。Provider 不声明能力时，
+  视频视觉分析仍可独立完成。
 - Schema 升级和备份恢复。
 
 ### 22.4 Desktop E2E

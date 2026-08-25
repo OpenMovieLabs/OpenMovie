@@ -17,6 +17,7 @@ import {
   OpenAIResponsesProvider,
   ProviderGateway,
   type ProviderJob,
+  type TranscribeAudioResult,
 } from '@openmovie/provider-gateway';
 import {
   ClaudeCodeDetector,
@@ -26,7 +27,11 @@ import {
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { agentPlanSchema, movieEntitySchema, type AgentPlan } from '@openmovie/movie-ir';
 import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
-import { FfmpegFrameExtractor, FfmpegTimelineRenderer } from '@openmovie/media-engine';
+import {
+  FfmpegFrameExtractor,
+  FfmpegMediaAnalyzer,
+  FfmpegTimelineRenderer,
+} from '@openmovie/media-engine';
 import type { StoredObject, TakeRecord } from '@openmovie/project-store';
 import packageMetadata from '../package.json' with { type: 'json' };
 
@@ -47,6 +52,7 @@ export class CoreServer {
   private readonly claude = new ClaudeCodeDetector();
   private readonly evaluations = new EvaluationEngine();
   private readonly frames = new FfmpegFrameExtractor();
+  private readonly mediaAnalyzer = new FfmpegMediaAnalyzer();
   private readonly timelineRenderer = new FfmpegTimelineRenderer();
 
   constructor() {
@@ -294,14 +300,67 @@ export class CoreServer {
       if (shot.type !== 'shot') throw new Error('Take target is not a Shot');
       const temporary = await mkdtemp(join(project.metadataRoot, 'temp', 'analysis-'));
       try {
+        const inspection = await this.mediaAnalyzer.inspect(objectPath, context.signal);
+        const analysisDurationUs = Math.min(shot.duration_us, inspection.durationUs);
+        const proxyPath = join(temporary, 'proxy.mp4');
+        const proxyEncoder = await this.mediaAnalyzer.createProxy(
+          objectPath,
+          proxyPath,
+          context.signal,
+        );
+        const proxyObject = await project.objects.importFile(proxyPath);
+        const boundariesUs = await this.mediaAnalyzer.detectShotBoundaries(
+          objectPath,
+          0.3,
+          context.signal,
+        );
+        let audioObjectUri: string | undefined;
+        let waveformObjectUri: string | undefined;
+        let transcript: TranscribeAudioResult | undefined;
+        if (inspection.hasAudio) {
+          const audioPath = join(temporary, 'audio.wav');
+          await this.mediaAnalyzer.extractAudio(objectPath, audioPath, context.signal);
+          audioObjectUri = (await project.objects.importFile(audioPath)).uri;
+          const waveform = await this.mediaAnalyzer.waveform(
+            objectPath,
+            inspection.durationUs,
+            240,
+            context.signal,
+          );
+          waveformObjectUri = (
+            await project.objects.importBytes(
+              Buffer.from(JSON.stringify(waveform)),
+              'waveform.json',
+            )
+          ).uri;
+          if (provider.transcribeAudio) {
+            transcript = await provider.transcribeAudio({
+              model:
+                typeof input.transcriptionModel === 'string'
+                  ? input.transcriptionModel
+                  : 'whisper-1',
+              bytes: await readFile(audioPath),
+              mimeType: 'audio/wav',
+              signal: context.signal,
+            });
+          }
+        }
         const frames = await this.frames.extract(
           objectPath,
           temporary,
-          shot.duration_us,
+          analysisDurationUs,
           context.signal,
         );
-        const evidence: Array<Record<string, unknown>> = [];
-        const summaries: string[] = [];
+        const evidence: Array<Record<string, unknown>> = boundariesUs.map((timeUs) => ({
+          kind: 'shot_boundary',
+          timeUs,
+        }));
+        const summaries: string[] = transcript ? [`Transcript: ${transcript.text}`] : [];
+        if (transcript) {
+          evidence.push(
+            ...transcript.segments.map((segment) => ({ kind: 'transcript', ...segment })),
+          );
+        }
         for (const frame of frames) {
           const bytes = await readFile(frame.path);
           const result = await provider.understandImage({
@@ -325,6 +384,20 @@ export class CoreServer {
             frameCount: frames.length,
             ffmpegVersion: availability.version ?? 'unknown',
             sampling: 'deterministic-even-v1',
+            inspection,
+            proxy: { objectUri: proxyObject.uri, encoder: proxyEncoder },
+            ...(audioObjectUri ? { audioObjectUri } : {}),
+            ...(waveformObjectUri ? { waveformObjectUri } : {}),
+            ...(transcript
+              ? {
+                  transcription: {
+                    model: transcript.model,
+                    ...(transcript.language ? { language: transcript.language } : {}),
+                    segmentCount: transcript.segments.length,
+                  },
+                }
+              : {}),
+            shotBoundaries: { threshold: 0.3, count: boundariesUs.length },
           },
         });
       } finally {

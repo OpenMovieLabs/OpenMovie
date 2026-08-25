@@ -31,6 +31,16 @@ describe('ProviderGateway', () => {
     });
     expect(image.mimeType).toBe('image/png');
     expect(image.bytes.byteLength).toBeGreaterThan(20);
+    expect(
+      await fake.transcribeAudio({
+        model: 'fake-transcription',
+        bytes: new Uint8Array([0, 0]),
+        mimeType: 'audio/wav',
+      }),
+    ).toMatchObject({
+      model: 'fake-transcription',
+      segments: [{ startUs: 0, endUs: 1_000_000 }],
+    });
     const videoJob = await fake.submitVideo({
       model: 'fake-video',
       prompt: 'moving frame',

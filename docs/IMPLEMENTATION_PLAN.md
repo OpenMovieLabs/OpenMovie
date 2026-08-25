@@ -298,17 +298,17 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 
 - [x] Windows/macOS FFmpeg/FFprobe LGPL Sidecar、固定版本、来源和 SHA-256。
 - [x] 图片元数据。
-- 视频代理。
+- [x] 视频代理。
 - [x] 确定性关键帧 Thumbnail。
-- Waveform。
+- [x] Waveform。
 - [x] 受控 Artifact Protocol。
 
 ### 9.2 Video Analysis
 
-- Shot Boundary。
+- [x] Shot Boundary。
 - [x] Keyframe Sampling。
-- Audio Extraction。
-- Transcription Port。
+- [x] Audio Extraction。
+- [x] Transcription Port。
 - [x] Multimodal Batch Analysis。
 - [x] Timestamped Result。
 

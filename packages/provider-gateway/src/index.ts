@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 
 export type ProviderCapability =
-  'text.generate' | 'image.understand' | 'image.generate' | 'video.analyze' | 'video.generate';
+  | 'text.generate'
+  | 'image.understand'
+  | 'image.generate'
+  | 'audio.transcribe'
+  | 'video.analyze'
+  | 'video.generate';
 
 export type ContentPart =
   { type: 'text'; text: string } | { type: 'image_url'; url: string; mimeType?: string };
@@ -51,6 +56,21 @@ export type UnderstandImageResult = GenerateTextResult & {
   evidence: Array<{ description: string; confidence?: number }>;
 };
 
+export type TranscribeAudioRequest = {
+  model: string;
+  bytes: Uint8Array;
+  mimeType: string;
+  language?: string;
+  signal?: AbortSignal;
+};
+
+export type TranscribeAudioResult = {
+  text: string;
+  model: string;
+  language?: string;
+  segments: Array<{ startUs: number; endUs: number; text: string }>;
+};
+
 export type GenerateVideoRequest = {
   model: string;
   prompt: string;
@@ -88,6 +108,7 @@ export interface ModelProvider {
   readonly capabilities: ReadonlySet<ProviderCapability>;
   generateText?(request: GenerateTextRequest): Promise<GenerateTextResult>;
   understandImage?(request: UnderstandImageRequest): Promise<UnderstandImageResult>;
+  transcribeAudio?(request: TranscribeAudioRequest): Promise<TranscribeAudioResult>;
   generateImage?(request: GenerateImageRequest): Promise<GenerateImageResult>;
   submitVideo?(request: GenerateVideoRequest): Promise<ProviderJob>;
   getVideoJob?(jobId: string, signal?: AbortSignal): Promise<ProviderJob>;
@@ -135,6 +156,7 @@ export class FakeProvider implements ModelProvider {
     'text.generate',
     'image.understand',
     'image.generate',
+    'audio.transcribe',
     'video.analyze',
     'video.generate',
   ]);
@@ -175,6 +197,18 @@ export class FakeProvider implements ModelProvider {
       model: request.model,
       finishReason: 'stop',
       evidence: [{ description: 'Deterministic fixture image', confidence: 1 }],
+    });
+  }
+
+  transcribeAudio(request: TranscribeAudioRequest): Promise<TranscribeAudioResult> {
+    if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    return Promise.resolve({
+      text: 'Fake transcript: deterministic fixture audio.',
+      model: request.model,
+      ...(request.language ? { language: request.language } : {}),
+      segments: [
+        { startUs: 0, endUs: 1_000_000, text: 'Fake transcript: deterministic fixture audio.' },
+      ],
     });
   }
 
