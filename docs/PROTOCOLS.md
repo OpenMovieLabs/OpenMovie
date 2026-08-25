@@ -94,13 +94,15 @@ interface CoreCommand<T = unknown> {
 
 桌面 Sidecar 使用带 `id` 的 JSONL/Node IPC 变体。当前运行时验证的方法包括：
 
-- Project：`project.create`、`project.open`、`project.get_summary`、`project.doctor`。
+- Project：`project.create`、`project.open`、`project.get_summary`、`project.doctor`、存储报告/清理与
+  `project.policy_update`。
 - Revision：commit、list、diff、working changes、restore、branch create/list/switch。
 - Movie IR：Brief、Story Bible、Character、Scene、Shot、Screenplay 和 Timeline 的读取、创建、装配、Current Cut Render 与乐观并发更新。
 - Media：Object import、Take list/select、Evaluation list、图片/视频分析及带证据的 Analysis list。
 - Feedback：绑定 Project、Scene、Shot、Take 或 Revision 的创建、查询与解决状态。
 - Task：create、run、list、events、approve、cancel。
-- Provider：OpenAI-compatible Chat/Vision/Images、通用异步 HTTP Video Jobs。
+- Provider：OpenAI-compatible Chat/Vision/Images、通用异步 HTTP Video Jobs、Profile 配置与
+  `provider.usage_summary`。
 - Harness：Codex App Server 与可用性探测。
 
 `task.create` 将规划与媒体执行明确分离：`plannerProviderId/plannerModel` 负责理解目标，`mediaProviderId/mediaModel/mediaKind` 负责产物生成。长任务创建后立即返回；状态通过持久化 Task 查询和 Event sequence 观察。异步 Provider Job ID 在 Step checkpoint 中持久化，重试时优先恢复远程 Job。
@@ -396,6 +398,15 @@ Core IPC 另实现 `proposal.list`、`proposal.accept` 和 `proposal.reject`。P
 Desktop 内置规划 Harness 使用统一 `OPENMOVIE_PLAN_V1` 输出契约。Codex App Server 只获得 `openmovie_project_summary` 与 `openmovie_entity_list` 两个只读 Dynamic Tool。Claude Code 使用公开 CLI print mode，以 stdin 接收目标，要求 JSON Schema 结构化输出，并限制为 Plan permission mode 以及 `Read`、`Glob`、`Grep`。两者的输出都再次通过 `agentPlanSchema` 校验后才可建立 Proposal；CLI 返回信封、诊断文本、Session ID 和费用元数据不被解释为 Movie IR 操作。
 
 Provider 配置实现 `provider.configure_openai_compatible`、`provider.configure_openai_responses` 与 `provider.configure_http_video`。Responses Adapter 使用 `POST /responses`，将 System 内容放入 `instructions`，文本/图片转为 `input_text` / `input_image`，设置 `store: false`，并把 `output_text`、状态与 Token Usage 归一化为统一 `GenerateTextResult`。自定义 LLM Profile 在 MVP 中明确表示“OpenAI Chat-compatible”，不猜测任意私有 Payload。
+
+当前 `remote_media_policy` 在每个远程文本、图片、视频或分析 Step 执行前由 Core 再次检查：
+`confirm` 使 Task 进入 `awaiting_approval`，`deny` 阻断请求，`allow` 允许执行。本地 Fake、Harness 与
+显式开发 Plugin 不视为远程 Provider。`project.policy_update` 是携带 `expectedRevisionId` 的版本化写入，
+Agent 不能隐式改变它。
+
+完成的 Provider 调用写入 `provider_runs`，记录 Provider、Model、Capability、Task、请求哈希、Job ID
+和 Provider 明确返回的 Token/费用。`provider.usage_summary` 汇总当前 UTC 月份。费用单位为
+`costUsdMicros`；未返回价格的调用计入 `unpricedRunCount`，不把 unknown 错报为零成本。
 
 ## 14. Tool Call
 

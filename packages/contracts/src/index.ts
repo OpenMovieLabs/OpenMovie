@@ -22,6 +22,13 @@ export const moviePatchOperationSchema = z.object({
 });
 
 const projectPathParamsSchema = z.object({ path: z.string().min(1) });
+const configurableProviderIdSchema = z
+  .string()
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/)
+  .refine(
+    (id) => id !== 'fake' && !id.startsWith('plugin.') && !id.startsWith('harness.'),
+    'Provider ID uses a reserved local namespace',
+  );
 
 export const coreCommandSchema = z.discriminatedUnion('method', [
   z.object({
@@ -72,6 +79,16 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     method: z.literal('project.storage_clean'),
     params: z.object({
       categories: z.array(z.enum(['cache', 'previews', 'temp'])).min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('project.policy_update'),
+    params: z.object({
+      expectedRevisionId: z.string().nullable(),
+      monthlyBudgetUsdMicros: z.number().int().nonnegative().nullable(),
+      remoteMediaPolicy: z.enum(['allow', 'confirm', 'deny']),
+      authorId: z.string().min(1),
     }),
   }),
   z.object({
@@ -360,7 +377,7 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     id: commandIdSchema,
     method: z.literal('provider.configure_openai_compatible'),
     params: z.object({
-      id: z.string().min(1),
+      id: configurableProviderIdSchema,
       baseUrl: z.string().url(),
       apiKey: z.string().min(1),
       imageGeneration: z.boolean().default(false),
@@ -370,7 +387,7 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     id: commandIdSchema,
     method: z.literal('provider.configure_openai_responses'),
     params: z.object({
-      id: z.string().min(1),
+      id: configurableProviderIdSchema,
       baseUrl: z.string().url(),
       apiKey: z.string().min(1),
     }),
@@ -379,7 +396,7 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     id: commandIdSchema,
     method: z.literal('provider.configure_http_video'),
     params: z.object({
-      id: z.string().min(1),
+      id: configurableProviderIdSchema,
       baseUrl: z.string().url(),
       apiKey: z.string().min(1),
       path: z.string().min(1).default('videos'),
@@ -388,6 +405,11 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   z.object({
     id: commandIdSchema,
     method: z.literal('provider.list'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('provider.usage_summary'),
     params: z.object({}).default({}),
   }),
   z.object({
@@ -439,6 +461,19 @@ export const projectSummarySchema = z.object({
     height: z.number().int(),
     frameRate: z.object({ numerator: z.number().int(), denominator: z.number().int() }),
   }),
+  policies: z.object({
+    monthlyBudgetUsdMicros: z.number().int().nonnegative().nullable(),
+    remoteMediaPolicy: z.enum(['allow', 'confirm', 'deny']),
+  }),
+});
+
+export const providerUsageSummarySchema = z.object({
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  runCount: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  costUsdMicros: z.number().int().nonnegative(),
+  unpricedRunCount: z.number().int().nonnegative(),
 });
 
 export const revisionRecordSchema = z.object({
@@ -674,6 +709,7 @@ export type CoreResponse = z.infer<typeof coreResponseSchema>;
 export type InitializeResult = z.infer<typeof initializeResultSchema>;
 export type CoreHealth = z.infer<typeof coreHealthSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProviderUsageSummary = z.infer<typeof providerUsageSummarySchema>;
 export type MoviePatchOperation = z.infer<typeof moviePatchOperationSchema>;
 export type RevisionRecord = z.infer<typeof revisionRecordSchema>;
 export type BranchRecord = z.infer<typeof branchRecordSchema>;

@@ -45,6 +45,8 @@ export const projectManifestSchema = z.object({
   policies: z.object({
     default_generation_strategy: z.enum(['fast', 'balanced', 'quality']).default('balanced'),
     protected_revision: entityIdSchema.nullable().default(null),
+    monthly_budget_usd_micros: z.number().int().nonnegative().nullable().default(null),
+    remote_media_policy: z.enum(['allow', 'confirm', 'deny']).default('confirm'),
   }),
   extensions: extensionsSchema,
 });

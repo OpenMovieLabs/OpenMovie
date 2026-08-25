@@ -1,6 +1,8 @@
 # Contributing to OpenMovie
 
-OpenMovie is in pre-implementation. The accepted product and technical baseline is indexed in [docs/README.md](./docs/README.md), and implementation begins with [M0 Repository Foundation](./docs/IMPLEMENTATION_PLAN.md#4-m0repository-foundation).
+OpenMovie is a pre-release implementation with a working Windows/macOS desktop baseline. Product,
+architecture and operating guides are indexed in [docs/README.md](./docs/README.md). Start with the
+[Development Guide](./docs/DEVELOPMENT.md) and the relevant package contracts.
 
 ## Before contributing
 
@@ -13,7 +15,18 @@ Contributions are licensed under the repository's [0BSD license](./LICENSE). By 
 
 ## Development baseline
 
-The repository will use a pnpm TypeScript monorepo with Electron Desktop, an isolated Core process, and Windows/macOS CI. Exact tool versions and executable commands will be added and locked by the M0 scaffold; do not infer commands that are not yet present.
+The repository uses a pnpm TypeScript monorepo with Electron Desktop, an isolated Core process, and
+Windows/macOS CI. Node and pnpm versions are pinned in the repository; the lockfile is authoritative.
+
+Before opening a PR, run:
+
+```bash
+pnpm check
+pnpm build
+pnpm perf:baseline -- --enforce
+```
+
+Run `pnpm smoke:desktop` for changes that affect Desktop, Core, SQLite, providers, media or IPC.
 
 The implementation must preserve these boundaries:
 

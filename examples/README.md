@@ -16,3 +16,11 @@ The generated project contains:
 - complete Revision history and a healthy deep Project Doctor report.
 
 The media are tiny deterministic fixtures so the example is free, offline, and safe for CI. Replace or regenerate the Takes from Desktop to exercise real image and video Providers.
+
+`providers/http-video-job-fixture.mjs` is an executable localhost implementation of the generic
+async Video Provider contract. Run it with Node, then configure a Desktop Provider using protocol
+`Async HTTP Video Jobs`, base URL `http://127.0.0.1:43119/v1/`, any non-empty development key, and
+model `fixture-video-v1`. It accepts submit, poll/collect and cancel without external network or cost.
+
+`plugins/text-echo` is the manifest and process fixture documented in
+[Plugin Development](../docs/PLUGIN_DEVELOPMENT.md).

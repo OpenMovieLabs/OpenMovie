@@ -123,6 +123,8 @@ jobs:
         run: node scripts/verify-release-signing.mjs ${{ matrix.target }}
       - name: Package desktop
         run: pnpm --filter @openmovie/desktop exec electron-builder --${{ matrix.target }} --publish never
+      - name: Smoke test packaged desktop and bundled media runtime
+        run: node scripts/smoke-packaged.mjs release/${{ env.OPENMOVIE_VERSION }}
       - uses: actions/upload-artifact@v4
         with:
           name: OpenMovie-${{ matrix.target }}-${{ env.OPENMOVIE_VERSION }}

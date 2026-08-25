@@ -25,7 +25,7 @@ Desktop 启动
 
 每个后续阶段都保持这条主路径可运行。
 
-当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 H.264 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、Claude Code 结构化只读规划、MCP、加密 Provider Secret、Provider 无费用连通性检查、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、统一受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
+当前可运行基线已覆盖 M0–M6 的 Beta 主路径：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、Claude Code 结构化只读规划、MCP、加密 Provider Secret、连接探测、远程数据与月度预算策略、Provider 用量台账、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、统一受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出、性能门禁、双语无障碍壳和 Windows/macOS 签名发布工作流。真实 Provider 兼容性、创作质量与干净机器发布验收仍需随具体 Beta Release 持续验证。
 
 ## 2. 工程约束
 
@@ -317,7 +317,7 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 - [x] Media Generation Contract。
 - [x] Fake Async Video Provider。
 - [x] 声明式真实异步 HTTP Video Provider Adapter。
-- 第二个 Provider Adapter 或可执行兼容 Fixture。
+- [x] 第二个 Provider Adapter 或可执行兼容 Fixture。
 - [x] Poll、Cancel、Resume、Collect。
 - [x] 多 Provider Take 对比。
 
@@ -361,7 +361,7 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 - [x] 国际化基础。
 - [x] Plugin 开发模式。
 - [x] SBOM、锁文件依赖基线和安全报告渠道。
-- 完整用户与开发文档。
+- [x] 完整用户与开发文档。
 
 当前已具备崩溃 Revision Journal 恢复、陈旧写锁显式接管、完整 Project 导出、深度 Doctor，以及运行数据库缺失时从 Movie IR 重建最小状态。数据库跨项目 ID 时拒绝静默绑定；Take/Task/Feedback 等不可从源文件推导的数据必须依靠完整导出备份。
 

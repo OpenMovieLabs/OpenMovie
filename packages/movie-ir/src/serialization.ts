@@ -69,6 +69,8 @@ export function createProjectManifest(title: string, locale = 'en-US'): ProjectM
     policies: {
       default_generation_strategy: 'balanced',
       protected_revision: null,
+      monthly_budget_usd_micros: null,
+      remote_media_policy: 'confirm',
     },
     extensions: {},
   });

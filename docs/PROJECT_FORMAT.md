@@ -123,11 +123,17 @@ entrypoints:
 policies:
   default_generation_strategy: balanced
   protected_revision: null
+  monthly_budget_usd_micros: null
+  remote_media_policy: confirm
 
 extensions: {}
 ```
 
 根清单不包含 API Key、绝对路径和 Provider Secret。
+
+`monthly_budget_usd_micros` 使用一美元的百万分之一作为整数单位，避免浮点金额进入可版本化源文件；
+`null` 表示不设上限。`remote_media_policy` 可为 `allow`、`confirm` 或 `deny`，默认 `confirm`。
+两项修改都通过正常 Revision 提交，因此可以 Diff、回滚和按 Branch 管理。
 
 ## 7. 通用实体头
 

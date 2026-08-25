@@ -53,10 +53,19 @@
     "policies": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["default_generation_strategy", "protected_revision"],
+      "required": [
+        "default_generation_strategy",
+        "protected_revision",
+        "monthly_budget_usd_micros",
+        "remote_media_policy"
+      ],
       "properties": {
         "default_generation_strategy": { "enum": ["fast", "balanced", "quality"] },
-        "protected_revision": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+        "protected_revision": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "monthly_budget_usd_micros": {
+          "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }]
+        },
+        "remote_media_policy": { "enum": ["allow", "confirm", "deny"] }
       }
     },
     "extensions": { "type": "object" }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FakeProvider,
   HttpVideoJobProvider,
+  OpenAICompatibleProvider,
   OpenAIResponsesProvider,
   ProviderGateway,
 } from './index.js';
@@ -70,6 +71,7 @@ describe('ProviderGateway', () => {
           status: 'completed',
           model: 'video-v1',
           b64_json: 'AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29t',
+          usage: { input_tokens: 8, output_tokens: 2, cost_usd_micros: 75_000 },
         }),
       );
     };
@@ -86,8 +88,38 @@ describe('ProviderGateway', () => {
     });
     expect(job).toMatchObject({ id: 'job_1', status: 'queued' });
     expect((await provider.getVideoJob(job.id)).status).toBe('succeeded');
-    expect((await provider.collectVideo(job.id))[0]?.providerJobId).toBe('job_1');
+    expect((await provider.collectVideo(job.id))[0]).toMatchObject({
+      providerJobId: 'job_1',
+      usage: { inputTokens: 8, outputTokens: 2, costUsdMicros: 75_000 },
+    });
     expect(calls).toHaveLength(3);
+  });
+
+  it('preserves explicit image Provider usage and cost', async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: 'image-test',
+      baseUrl: 'https://images.example/v1/',
+      apiKey: 'test-key',
+      imageGeneration: true,
+      fetch: () =>
+        Promise.resolve(
+          Response.json({
+            data: [{ b64_json: 'iVBORw0KGgo=' }],
+            usage: { input_tokens: 5, output_tokens: 1, cost_usd_micros: 20_000 },
+          }),
+        ),
+    });
+    expect(
+      await provider.generateImage({
+        model: 'image-v1',
+        prompt: 'A test frame',
+        width: 1024,
+        height: 1024,
+      }),
+    ).toMatchObject({
+      model: 'image-v1',
+      usage: { inputTokens: 5, outputTokens: 1, costUsdMicros: 20_000 },
+    });
   });
 
   it('normalizes text and image inputs through the OpenAI Responses protocol', async () => {
@@ -110,7 +142,7 @@ describe('ProviderGateway', () => {
                 content: [{ type: 'output_text', text: 'A figure crosses the frame.' }],
               },
             ],
-            usage: { input_tokens: 12, output_tokens: 7 },
+            usage: { input_tokens: 12, output_tokens: 7, cost_usd_micros: 2_500 },
           }),
         );
       },
@@ -126,7 +158,7 @@ describe('ProviderGateway', () => {
       text: 'A figure crosses the frame.',
       model: 'vision-model',
       finishReason: 'completed',
-      usage: { inputTokens: 12, outputTokens: 7 },
+      usage: { inputTokens: 12, outputTokens: 7, costUsdMicros: 2_500 },
     });
     expect(requestBody).toMatchObject({
       model: 'vision-model',

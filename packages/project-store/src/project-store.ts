@@ -28,6 +28,7 @@ import { ProposalRepository } from './proposal-repository.js';
 import { RevisionEngine } from './revision.js';
 import { StorageManager } from './storage-manager.js';
 import { SqliteTaskPersistence } from './task-persistence.js';
+import { UsageRepository } from './usage-repository.js';
 
 function digest(content: string): string {
   return createHash('sha256').update(content).digest('hex');
@@ -54,6 +55,7 @@ export class ProjectStore {
   readonly feedback: FeedbackRepository;
   readonly proposals: ProposalRepository;
   readonly storage: StorageManager;
+  readonly usage: UsageRepository;
 
   private closed = false;
 
@@ -74,6 +76,7 @@ export class ProjectStore {
     this.feedback = new FeedbackRepository(database, this.movies);
     this.proposals = new ProposalRepository(database, this.movies, this.revisions, this.feedback);
     this.storage = new StorageManager(root, this.metadataRoot);
+    this.usage = new UsageRepository(database);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {

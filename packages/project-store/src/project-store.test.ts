@@ -134,6 +134,33 @@ describe('ProjectStore', () => {
     await reopened.close();
   });
 
+  it('summarizes priced and unpriced Provider usage for the current month', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-usage-'));
+    const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Usage' });
+    project.usage.record({
+      taskId: 'task_usage',
+      providerId: 'provider_test',
+      modelId: 'model_test',
+      capability: 'text.generate',
+      requestHash: 'request_1',
+      usage: { inputTokens: 12, outputTokens: 4, costUsdMicros: 1_500 },
+    });
+    project.usage.record({
+      providerId: 'provider_test',
+      modelId: 'model_test',
+      capability: 'image.generate',
+      requestHash: 'request_2',
+    });
+    expect(project.usage.summary()).toMatchObject({
+      runCount: 2,
+      inputTokens: 12,
+      outputTokens: 4,
+      costUsdMicros: 1_500,
+      unpricedRunCount: 1,
+    });
+    await project.close();
+  });
+
   it('commits scene and shot files atomically in a full project snapshot', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'openmovie-entities-'));
     const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Entities' });

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 
@@ -16,6 +17,7 @@ import {
   OpenAICompatibleProvider,
   OpenAIResponsesProvider,
   ProviderGateway,
+  type GenerateTextRequest,
   type ProviderJob,
   type TranscribeAudioResult,
 } from '@openmovie/provider-gateway';
@@ -75,6 +77,7 @@ export class CoreServer {
     tasks.registerStep('text.generate', async (input, context) => {
       const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
       const project = this.requireProject();
+      await this.assertProviderPolicy(project, providerId, context.task.approvedAt !== undefined);
       let targetContext = '';
       if (typeof input.targetShotId === 'string') {
         const shot = await project.movies.read('shot', input.targetShotId);
@@ -111,7 +114,7 @@ export class CoreServer {
       }
       const provider = this.providers.get(providerId);
       if (!provider.generateText) throw new Error(`Provider cannot generate text: ${providerId}`);
-      return provider.generateText({
+      const request: GenerateTextRequest = {
         model: typeof input.model === 'string' ? input.model : 'fake-text-v1',
         messages: [
           {
@@ -124,7 +127,17 @@ export class CoreServer {
           },
         ],
         signal: context.signal,
+      };
+      const result = await provider.generateText(request);
+      project.usage.record({
+        taskId: context.task.id,
+        providerId,
+        modelId: result.model,
+        capability: 'text.generate',
+        requestHash: stableRequestHash(request),
+        ...(result.usage ? { usage: result.usage } : {}),
       });
+      return result;
     });
     tasks.registerStep('proposal.create_from_plan', (input, context) => {
       const project = this.requireProject();
@@ -156,6 +169,7 @@ export class CoreServer {
     tasks.registerStep('image.generate', async (input, context) => {
       const project = this.requireProject();
       const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      await this.assertProviderPolicy(project, providerId, context.task.approvedAt !== undefined);
       const provider = this.providers.get(providerId);
       if (!provider.generateImage)
         throw new Error(`Provider cannot generate images: ${providerId}`);
@@ -169,6 +183,14 @@ export class CoreServer {
         signal: context.signal,
       });
       const object = await project.objects.importBytes(generated.bytes, 'generated.png');
+      project.usage.record({
+        taskId: context.task.id,
+        providerId,
+        modelId: generated.model,
+        capability: 'image.generate',
+        requestHash: generated.requestHash,
+        ...(generated.usage ? { usage: generated.usage } : {}),
+      });
       if (typeof input.shotId === 'string') {
         const take = await project.media.createTake({
           shotId: input.shotId,
@@ -210,6 +232,7 @@ export class CoreServer {
     tasks.registerStep('video.generate', async (input, context) => {
       const project = this.requireProject();
       const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      await this.assertProviderPolicy(project, providerId, context.task.approvedAt !== undefined);
       const provider = this.providers.get(providerId);
       if (!provider.submitVideo || !provider.getVideoJob || !provider.collectVideo) {
         throw new Error(`Provider cannot generate videos: ${providerId}`);
@@ -255,6 +278,15 @@ export class CoreServer {
       if (job.status !== 'succeeded') throw new Error(job.error ?? `Video job ${job.status}`);
       const generated = (await provider.collectVideo(job.id, context.signal))[0];
       if (!generated) throw new Error('Video Provider returned no artifact');
+      project.usage.record({
+        taskId: context.task.id,
+        providerId,
+        modelId: generated.model,
+        capability: 'video.generate',
+        requestHash: generated.requestHash,
+        providerJobId: job.id,
+        ...(generated.usage ? { usage: generated.usage } : {}),
+      });
       const object = await project.objects.importBytes(generated.bytes, 'generated.mp4');
       if (typeof input.shotId !== 'string') return { object, job };
       const take = await project.media.createTake({
@@ -279,6 +311,7 @@ export class CoreServer {
       const project = this.requireProject();
       if (typeof input.takeId !== 'string') throw new Error('Take ID is required');
       const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      await this.assertProviderPolicy(project, providerId, context.task.approvedAt !== undefined);
       const model = typeof input.model === 'string' ? input.model : 'fake-vision-v1';
       const prompt = typeof input.prompt === 'string' ? input.prompt : context.task.goal;
       const take = project.media.getTake(input.takeId);
@@ -298,6 +331,14 @@ export class CoreServer {
           imageUrl: `data:${take.artifact.mimeType};base64,${bytes.toString('base64')}`,
           mimeType: take.artifact.mimeType,
           signal: context.signal,
+        });
+        project.usage.record({
+          taskId: context.task.id,
+          providerId,
+          modelId: result.model,
+          capability: 'image.understand',
+          requestHash: stableRequestHash({ model, prompt, objectUri: take.artifact.objectUri }),
+          ...(result.usage ? { usage: result.usage } : {}),
         });
         return project.media.recordAnalysis({
           takeId: take.id,
@@ -389,6 +430,19 @@ export class CoreServer {
             imageUrl: `data:image/jpeg;base64,${bytes.toString('base64')}`,
             mimeType: 'image/jpeg',
             signal: context.signal,
+          });
+          project.usage.record({
+            taskId: context.task.id,
+            providerId,
+            modelId: result.model,
+            capability: 'video.analyze',
+            requestHash: stableRequestHash({
+              model,
+              prompt,
+              objectUri: take.artifact.objectUri,
+              timeUs: frame.timeUs,
+            }),
+            ...(result.usage ? { usage: result.usage } : {}),
           });
           summaries.push(`${(frame.timeUs / 1_000_000).toFixed(3)}s: ${result.text}`);
           evidence.push({ timeUs: frame.timeUs, summary: result.text });
@@ -634,6 +688,27 @@ export class CoreServer {
           result: await this.requireProject().storage.clean(command.params.categories),
         };
       }
+      case 'project.policy_update': {
+        const revision = await this.requireProject().revisions.commit({
+          expectedRevisionId: command.params.expectedRevisionId,
+          authorType: 'user',
+          authorId: command.params.authorId,
+          message: 'Update Provider budget and data policy',
+          patch: [
+            {
+              op: 'replace',
+              path: '/policies/monthly_budget_usd_micros',
+              value: command.params.monthlyBudgetUsdMicros,
+            },
+            {
+              op: 'replace',
+              path: '/policies/remote_media_policy',
+              value: command.params.remoteMediaPolicy,
+            },
+          ],
+        });
+        return { id: command.id, ok: true, result: revision };
+      }
       case 'revision.commit': {
         const project = this.requireProject();
         const revision = await project.revisions.commit(command.params);
@@ -812,14 +887,23 @@ export class CoreServer {
           ),
         };
       case 'analysis.create_task': {
-        this.requireProject().media.getTake(command.params.takeId);
-        const task = this.tasks.create(`Analyze Take ${command.params.takeId}`, [
+        const project = this.requireProject();
+        project.media.getTake(command.params.takeId);
+        const task = this.tasks.create(
+          `Analyze Take ${command.params.takeId}`,
+          [
+            {
+              kind: 'media.analyze',
+              title: 'Analyze media with timecoded evidence',
+              input: command.params,
+            },
+          ],
           {
-            kind: 'media.analyze',
-            title: 'Analyze media with timecoded evidence',
-            input: command.params,
+            requiresApproval: await this.requiresRemoteApproval(project, [
+              command.params.providerId,
+            ]),
           },
-        ]);
+        );
         return { id: command.id, ok: true, result: task };
       }
       case 'analysis.list':
@@ -861,6 +945,10 @@ export class CoreServer {
           if (target.type !== 'shot') throw new Error('Task target must be a shot');
           durationSeconds = target.duration_us / 1_000_000;
         }
+        const policyRequiresApproval = await this.requiresRemoteApproval(project, [
+          command.params.plannerProviderId,
+          command.params.mediaProviderId,
+        ]);
         const task = this.tasks.create(
           command.params.goal,
           [
@@ -900,7 +988,7 @@ export class CoreServer {
               },
             },
           ],
-          { requiresApproval: command.params.requiresApproval },
+          { requiresApproval: command.params.requiresApproval || policyRequiresApproval },
         );
         return { id: command.id, ok: true, result: task };
       }
@@ -925,6 +1013,7 @@ export class CoreServer {
           result: this.tasks.listEvents(command.params.taskId, command.params.afterSequence),
         };
       case 'provider.configure_openai_compatible':
+        this.assertConfigurableRemoteProviderId(command.params.id);
         this.providers.upsert(
           new OpenAICompatibleProvider({
             id: command.params.id,
@@ -935,6 +1024,7 @@ export class CoreServer {
         );
         return { id: command.id, ok: true, result: { id: command.params.id } };
       case 'provider.configure_openai_responses':
+        this.assertConfigurableRemoteProviderId(command.params.id);
         this.providers.upsert(
           new OpenAIResponsesProvider({
             id: command.params.id,
@@ -944,6 +1034,7 @@ export class CoreServer {
         );
         return { id: command.id, ok: true, result: { id: command.params.id } };
       case 'provider.configure_http_video':
+        this.assertConfigurableRemoteProviderId(command.params.id);
         this.providers.upsert(
           new HttpVideoJobProvider({
             id: command.params.id,
@@ -955,6 +1046,8 @@ export class CoreServer {
         return { id: command.id, ok: true, result: { id: command.params.id } };
       case 'provider.list':
         return { id: command.id, ok: true, result: this.providers.list() };
+      case 'provider.usage_summary':
+        return { id: command.id, ok: true, result: this.requireProject().usage.summary() };
       case 'harness.list': {
         const [codex, claude] = await Promise.all([this.codex.detect(), this.claude.detect()]);
         return {
@@ -1002,6 +1095,55 @@ export class CoreServer {
     for (const manifestPath of manifests) {
       const plugin = await loadDevelopmentPlugin(manifestPath);
       this.providers.upsert(plugin.provider);
+    }
+  }
+
+  private isRemoteProvider(providerId: string): boolean {
+    return (
+      providerId !== 'fake' &&
+      !providerId.startsWith('harness:') &&
+      !providerId.startsWith('plugin.')
+    );
+  }
+
+  private assertConfigurableRemoteProviderId(providerId: string): void {
+    if (
+      providerId === 'fake' ||
+      providerId.startsWith('harness:') ||
+      providerId.startsWith('harness.') ||
+      providerId.startsWith('plugin.')
+    ) {
+      throw new Error(`Provider ID uses a reserved local namespace: ${providerId}`);
+    }
+  }
+
+  private async requiresRemoteApproval(
+    project: ProjectStore,
+    providerIds: string[],
+  ): Promise<boolean> {
+    const manifest = await project.readManifest();
+    return (
+      manifest.policies.remote_media_policy === 'confirm' &&
+      providerIds.some((providerId) => this.isRemoteProvider(providerId))
+    );
+  }
+
+  private async assertProviderPolicy(
+    project: ProjectStore,
+    providerId: string,
+    approved: boolean,
+  ): Promise<void> {
+    if (!this.isRemoteProvider(providerId)) return;
+    const manifest = await project.readManifest();
+    if (manifest.policies.remote_media_policy === 'deny') {
+      throw new Error('Project policy denies remote Provider requests');
+    }
+    if (manifest.policies.remote_media_policy === 'confirm' && !approved) {
+      throw new Error('Project policy requires approval before a remote Provider request');
+    }
+    const budget = manifest.policies.monthly_budget_usd_micros;
+    if (budget !== null && project.usage.summary().costUsdMicros >= budget) {
+      throw new Error('Project monthly Provider budget has been reached');
     }
   }
 
@@ -1200,8 +1342,22 @@ export class CoreServer {
         height: manifest.delivery.height,
         frameRate: manifest.delivery.frame_rate,
       },
+      policies: {
+        monthlyBudgetUsdMicros: manifest.policies.monthly_budget_usd_micros,
+        remoteMediaPolicy: manifest.policies.remote_media_policy,
+      },
     };
   }
+}
+
+function stableRequestHash(value: unknown): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify(value, (_key: string, item: unknown) =>
+        item instanceof AbortSignal ? undefined : item,
+      ),
+    )
+    .digest('hex');
 }
 
 function parseAgentPlanText(text: string): AgentPlan | null {

@@ -15,6 +15,7 @@ import {
   harnessHealthSchema,
   initializeResultSchema,
   projectSummarySchema,
+  providerUsageSummarySchema,
   revisionRecordSchema,
   revisionDiffSchema,
   revisionProposalRecordSchema,
@@ -288,6 +289,36 @@ void app
           params: { categories: ['cache', 'previews', 'temp'] },
         }),
       ),
+    );
+    ipcMain.handle(
+      'openmovie:project-policy-update',
+      async (_event, monthlyBudgetUsdMicros: unknown, remoteMediaPolicy: unknown) => {
+        if (
+          (monthlyBudgetUsdMicros !== null &&
+            (!Number.isSafeInteger(monthlyBudgetUsdMicros) ||
+              Number(monthlyBudgetUsdMicros) < 0)) ||
+          !['allow', 'confirm', 'deny'].includes(String(remoteMediaPolicy))
+        ) {
+          throw new Error('Invalid Provider policy');
+        }
+        const summary = projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        );
+        revisionRecordSchema.parse(
+          await core?.request({
+            method: 'project.policy_update',
+            params: {
+              expectedRevisionId: summary.currentRevisionId,
+              monthlyBudgetUsdMicros: monthlyBudgetUsdMicros as number | null,
+              remoteMediaPolicy: remoteMediaPolicy as 'allow' | 'confirm' | 'deny',
+              authorId: 'user_local',
+            },
+          }),
+        );
+        return projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        );
+      },
     );
     ipcMain.handle('openmovie:project-rename', async (_event, title: unknown) => {
       if (typeof title !== 'string' || title.trim().length === 0)
@@ -931,6 +962,11 @@ void app
       });
       return [...profiles, ...plugins];
     });
+    ipcMain.handle('openmovie:provider-usage-summary', async () =>
+      providerUsageSummarySchema.parse(
+        await core?.request({ method: 'provider.usage_summary', params: {} }),
+      ),
+    );
     ipcMain.handle('openmovie:provider-save', async (_event, value: unknown) => {
       if (typeof value !== 'object' || value === null) throw new Error('Invalid provider profile');
       const input = value as Record<string, unknown>;
@@ -940,6 +976,14 @@ void app
       }
       if (!secrets) throw new Error('Secret Store is unavailable');
       const id = String(input.id);
+      if (
+        !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(id) ||
+        id === 'fake' ||
+        id.startsWith('plugin.') ||
+        id.startsWith('harness.')
+      ) {
+        throw new Error('Provider ID is invalid or uses a reserved local namespace');
+      }
       const secretId = `provider.${id}`;
       if (String(input.apiKey))
         await secrets.set(secretId, String(input.label), String(input.apiKey));

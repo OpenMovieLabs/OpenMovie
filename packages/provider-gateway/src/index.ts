@@ -19,11 +19,17 @@ export type GenerateTextRequest = {
   signal?: AbortSignal;
 };
 
+export type ProviderUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsdMicros?: number;
+};
+
 export type GenerateTextResult = {
   text: string;
   model: string;
   finishReason: string;
-  usage?: { inputTokens?: number; outputTokens?: number; costUsdMicros?: number };
+  usage?: ProviderUsage;
   rawId?: string;
 };
 
@@ -42,6 +48,7 @@ export type GenerateImageResult = {
   model: string;
   seed?: number;
   requestHash: string;
+  usage?: ProviderUsage;
 };
 
 export type UnderstandImageRequest = {
@@ -101,6 +108,7 @@ export type GeneratedMedia = {
   model: string;
   requestHash: string;
   providerJobId?: string;
+  usage?: ProviderUsage;
 };
 
 export interface ModelProvider {
@@ -114,6 +122,23 @@ export interface ModelProvider {
   getVideoJob?(jobId: string, signal?: AbortSignal): Promise<ProviderJob>;
   collectVideo?(jobId: string, signal?: AbortSignal): Promise<GeneratedMedia[]>;
   cancelVideo?(jobId: string): Promise<ProviderJob>;
+}
+
+function normalizeUsage(input: {
+  inputTokens: unknown;
+  outputTokens: unknown;
+  costUsdMicros: unknown;
+}): NonNullable<GenerateTextResult['usage']> {
+  const normalized: NonNullable<GenerateTextResult['usage']> = {};
+  for (const key of ['inputTokens', 'outputTokens', 'costUsdMicros'] as const) {
+    const value = input[key];
+    if (value === undefined) continue;
+    if (!Number.isSafeInteger(value) || Number(value) < 0) {
+      throw new Error(`Provider returned invalid ${key}`);
+    }
+    normalized[key] = Number(value);
+  }
+  return normalized;
 }
 
 export class ProviderGateway {
@@ -174,6 +199,7 @@ export class FakeProvider implements ModelProvider {
       text: `Fake response: ${text}`,
       model: request.model,
       finishReason: 'stop',
+      usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
     });
   }
 
@@ -187,6 +213,7 @@ export class FakeProvider implements ModelProvider {
       requestHash: createHash('sha256')
         .update(JSON.stringify(request, ['model', 'prompt', 'width', 'height', 'seed']))
         .digest('hex'),
+      usage: { costUsdMicros: 0 },
     });
   }
 
@@ -197,6 +224,7 @@ export class FakeProvider implements ModelProvider {
       model: request.model,
       finishReason: 'stop',
       evidence: [{ description: 'Deterministic fixture image', confidence: 1 }],
+      usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
     });
   }
 
@@ -254,6 +282,7 @@ export class FakeProvider implements ModelProvider {
         requestHash: createHash('sha256')
           .update(JSON.stringify(stored.request, ['model', 'prompt', 'mode', 'durationSeconds']))
           .digest('hex'),
+        usage: { costUsdMicros: 0 },
       },
     ]);
   }
@@ -273,6 +302,7 @@ export type OpenAICompatibleOptions = {
   apiKey: string;
   headers?: Record<string, string>;
   imageGeneration?: boolean;
+  fetch?: typeof fetch;
 };
 
 export class OpenAICompatibleProvider implements ModelProvider {
@@ -298,7 +328,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
       throw new Error('Provider endpoint must use HTTPS unless it is localhost');
     }
-    const response = await fetch(url, {
+    const response = await (this.options.fetch ?? fetch)(url, {
       method: 'POST',
       ...(request.signal ? { signal: request.signal } : {}),
       headers: {
@@ -326,7 +356,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
       id?: string;
       model?: string;
       choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        cost_usd_micros?: number;
+      };
     };
     const choice = value.choices?.[0];
     if (!choice?.message?.content) throw new Error('Provider response contains no assistant text');
@@ -335,14 +369,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
       model: value.model ?? request.model,
       finishReason: choice.finish_reason ?? 'unknown',
       ...(value.id ? { rawId: value.id } : {}),
-      usage: {
-        ...(value.usage?.prompt_tokens === undefined
-          ? {}
-          : { inputTokens: value.usage.prompt_tokens }),
-        ...(value.usage?.completion_tokens === undefined
-          ? {}
-          : { outputTokens: value.usage.completion_tokens }),
-      },
+      usage: normalizeUsage({
+        inputTokens: value.usage?.prompt_tokens,
+        outputTokens: value.usage?.completion_tokens,
+        costUsdMicros: value.usage?.cost_usd_micros,
+      }),
     };
   }
 
@@ -378,7 +409,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
       throw new Error('Provider endpoint must use HTTPS unless it is localhost');
     }
-    const response = await fetch(url, {
+    const response = await (this.options.fetch ?? fetch)(url, {
       method: 'POST',
       ...(request.signal ? { signal: request.signal } : {}),
       headers: {
@@ -397,6 +428,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     if (!response.ok) throw new Error(`Provider image HTTP ${response.status}`);
     const value = (await response.json()) as {
       data?: Array<{ b64_json?: string; url?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number; cost_usd_micros?: number };
     };
     const item = value.data?.[0];
     let bytes: Uint8Array;
@@ -405,7 +437,10 @@ export class OpenAICompatibleProvider implements ModelProvider {
     } else if (item?.url) {
       const outputUrl = new URL(item.url);
       if (outputUrl.protocol !== 'https:') throw new Error('Provider image URL must use HTTPS');
-      const output = await fetch(outputUrl, request.signal ? { signal: request.signal } : {});
+      const output = await (this.options.fetch ?? fetch)(
+        outputUrl,
+        request.signal ? { signal: request.signal } : {},
+      );
       if (!output.ok) throw new Error(`Provider image download HTTP ${output.status}`);
       bytes = new Uint8Array(await output.arrayBuffer());
     } else {
@@ -419,6 +454,11 @@ export class OpenAICompatibleProvider implements ModelProvider {
       requestHash: createHash('sha256')
         .update(JSON.stringify(request, ['model', 'prompt', 'width', 'height', 'seed']))
         .digest('hex'),
+      usage: normalizeUsage({
+        inputTokens: value.usage?.input_tokens,
+        outputTokens: value.usage?.output_tokens,
+        costUsdMicros: value.usage?.cost_usd_micros,
+      }),
     };
   }
 }
@@ -506,7 +546,7 @@ export class OpenAIResponsesProvider implements ModelProvider {
         type?: string;
         content?: Array<{ type?: string; text?: string }>;
       }>;
-      usage?: { input_tokens?: number; output_tokens?: number };
+      usage?: { input_tokens?: number; output_tokens?: number; cost_usd_micros?: number };
     };
     const text =
       value.output_text ??
@@ -521,14 +561,11 @@ export class OpenAIResponsesProvider implements ModelProvider {
       model: value.model ?? request.model,
       finishReason: value.incomplete_details?.reason ?? value.status ?? 'unknown',
       ...(value.id ? { rawId: value.id } : {}),
-      usage: {
-        ...(value.usage?.input_tokens === undefined
-          ? {}
-          : { inputTokens: value.usage.input_tokens }),
-        ...(value.usage?.output_tokens === undefined
-          ? {}
-          : { outputTokens: value.usage.output_tokens }),
-      },
+      usage: normalizeUsage({
+        inputTokens: value.usage?.input_tokens,
+        outputTokens: value.usage?.output_tokens,
+        costUsdMicros: value.usage?.cost_usd_micros,
+      }),
     };
   }
 
@@ -653,6 +690,7 @@ export class HttpVideoJobProvider implements ModelProvider {
       output?: { url?: string; b64_json?: string; mime_type?: string };
       url?: string;
       b64_json?: string;
+      usage?: { input_tokens?: number; output_tokens?: number; cost_usd_micros?: number };
     };
     if (this.normalizeStatus(value.status ?? 'succeeded') !== 'succeeded') {
       throw new Error(`Video Provider job is ${value.status ?? 'not complete'}`);
@@ -678,6 +716,11 @@ export class HttpVideoJobProvider implements ModelProvider {
         model: value.model ?? 'unknown',
         providerJobId: jobId,
         requestHash: createHash('sha256').update(bytes).digest('hex'),
+        usage: normalizeUsage({
+          inputTokens: value.usage?.input_tokens,
+          outputTokens: value.usage?.output_tokens,
+          costUsdMicros: value.usage?.cost_usd_micros,
+        }),
       },
     ];
   }

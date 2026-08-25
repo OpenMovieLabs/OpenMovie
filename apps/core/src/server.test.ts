@@ -85,6 +85,55 @@ describe('CoreServer', () => {
     }
   });
 
+  it('requires approval for remote Providers and versions project data policy changes', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-core-policy-'));
+    const server = new CoreServer();
+    try {
+      let sequence = 0;
+      const send = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+        const response = await server.handle({ id: `policy-${sequence++}`, method, params });
+        if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`);
+        return response.result;
+      };
+      let summary = projectSummarySchema.parse(
+        await send('project.create', { path: join(parent, 'movie'), title: 'Policy Movie' }),
+      );
+      expect(summary.policies).toEqual({
+        monthlyBudgetUsdMicros: null,
+        remoteMediaPolicy: 'confirm',
+      });
+      const remoteTask = taskSchema.parse(
+        await send('task.create', {
+          goal: 'Remote planning request',
+          plannerProviderId: 'remote_fixture',
+          plannerModel: 'fixture-model',
+          requiresApproval: false,
+          mediaKind: 'image',
+          mediaProviderId: 'fake',
+          mediaModel: 'fake-image-v1',
+        }),
+      );
+      expect(remoteTask.requiresApproval).toBe(true);
+      expect(taskSchema.parse(await send('task.run', { taskId: remoteTask.id })).status).toBe(
+        'awaiting_approval',
+      );
+
+      await send('project.policy_update', {
+        expectedRevisionId: summary.currentRevisionId,
+        monthlyBudgetUsdMicros: 5_000_000,
+        remoteMediaPolicy: 'deny',
+        authorId: 'test',
+      });
+      summary = projectSummarySchema.parse(await send('project.get_summary', {}));
+      expect(summary.policies).toEqual({
+        monthlyBudgetUsdMicros: 5_000_000,
+        remoteMediaPolicy: 'deny',
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it('renders a selected Take into a persisted Current Cut when FFmpeg is available', async () => {
     if (!(await new FfmpegTimelineRenderer().detect()).available) return;
     const parent = await mkdtemp(join(tmpdir(), 'openmovie-core-render-'));

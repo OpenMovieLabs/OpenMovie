@@ -1102,6 +1102,12 @@ interface RoutingPolicy {
 
 Estimate 与 Actual 分开保存。无法确认费用时使用 unknown，禁止显示为免费。
 
+当前基线已实现 Actual 台账的最小闭环：Chat/Responses Adapter 可读取 Provider 明确返回的
+`cost_usd_micros`，Core 对成功的文本、理解、图片和视频调用写入 `provider_runs`，Desktop 显示当前
+UTC 月的 Run、Token、已报告费用与未定价次数。项目清单保存可版本化月度费用上限；Core 在每个远程
+Step 前阻断已达到上限的后续请求。公开价目推算、单次/每日预算和执行前精确成本预测仍属于后续增强，
+因此 UI 不把当前上限描述成能覆盖未定价 Provider 的绝对硬上限。
+
 ### 14.15 可靠性
 
 - HTTP 超时区分连接、首字节和总任务超时。
@@ -1202,6 +1208,10 @@ type PolicyDecision =
 - Provider 无法估算时必须标记 unknown。
 - 实际费用以 Provider 可获得记录和本地推算分别保存。
 - 超过阈值时暂停后续节点，不能在事后才通知。
+
+实现基线同时提供 `allow | confirm | deny` 的项目级远程数据策略。默认 `confirm`，远程规划、生成或分析
+Task 在任何外发前进入审批；`deny` 在 Step 边界再次阻断，避免仅依赖 Renderer。策略和预算都通过
+Revision 更新，可审计和回滚。
 
 ## 17. Desktop 安全边界
 

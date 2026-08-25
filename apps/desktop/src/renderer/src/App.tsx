@@ -21,6 +21,7 @@ import type {
   HarnessHealth,
   InitializeResult,
   ProjectSummary,
+  ProviderUsageSummary,
   RevisionRecord,
   RevisionProposalRecord,
   RevisionDiff,
@@ -109,6 +110,11 @@ export function App(): React.JSX.Element {
   const [showSettings, setShowSettings] = useState(false);
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
   const [providerProbes, setProviderProbes] = useState<Record<string, ProviderProbe>>({});
+  const [providerUsage, setProviderUsage] = useState<ProviderUsageSummary | null>(null);
+  const [monthlyBudgetUsd, setMonthlyBudgetUsd] = useState('');
+  const [remoteMediaPolicy, setRemoteMediaPolicy] = useState<'allow' | 'confirm' | 'deny'>(
+    'confirm',
+  );
   const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [providerForm, setProviderForm] = useState({
@@ -288,6 +294,7 @@ export function App(): React.JSX.Element {
       nextProviders,
       nextProposals,
       nextStorageReport,
+      nextProviderUsage,
     ] = await Promise.all([
       window.openMovie.listRevisions(),
       window.openMovie.listTasks(),
@@ -302,6 +309,7 @@ export function App(): React.JSX.Element {
       window.openMovie.listProviders(),
       window.openMovie.listProposals(),
       window.openMovie.getStorageReport(),
+      window.openMovie.getProviderUsage(),
     ]);
     setRevisions(nextRevisions);
     setBranches(nextBranches);
@@ -343,6 +351,13 @@ export function App(): React.JSX.Element {
     setProviders(nextProviders);
     setProposals(nextProposals);
     setStorageReport(nextStorageReport);
+    setProviderUsage(nextProviderUsage);
+    setMonthlyBudgetUsd(
+      summary.policies.monthlyBudgetUsdMicros === null
+        ? ''
+        : String(summary.policies.monthlyBudgetUsdMicros / 1_000_000),
+    );
+    setRemoteMediaPolicy(summary.policies.remoteMediaPolicy);
     setStoryPremise(nextStory.brief.premise);
     setStoryThemes(nextStory.bible.themes.join(', '));
     setStoryWorld(nextStory.bible.world);
@@ -589,13 +604,31 @@ export function App(): React.JSX.Element {
 
   const openSettings = (): void => {
     void run(async () => {
-      const [nextProviders, nextUpdateState] = await Promise.all([
+      const [nextProviders, nextUpdateState, nextProviderUsage] = await Promise.all([
         window.openMovie.listProviders(),
         window.openMovie.getUpdateStatus(),
+        project ? window.openMovie.getProviderUsage() : Promise.resolve(null),
       ]);
       setProviders(nextProviders);
       setUpdateState(nextUpdateState);
+      setProviderUsage(nextProviderUsage);
       setShowSettings(true);
+    });
+  };
+
+  const saveProjectPolicies = (): void => {
+    if (!project) return;
+    void run(async () => {
+      const normalized = monthlyBudgetUsd.trim();
+      const dollars = normalized === '' ? null : Number(normalized);
+      if (dollars !== null && (!Number.isFinite(dollars) || dollars < 0)) {
+        throw new Error(t('invalidBudget'));
+      }
+      const micros = dollars === null ? null : Math.round(dollars * 1_000_000);
+      if (micros !== null && !Number.isSafeInteger(micros)) {
+        throw new Error(t('invalidBudget'));
+      }
+      await loadProject(await window.openMovie.updateProjectPolicies(micros, remoteMediaPolicy));
     });
   };
 
@@ -1715,6 +1748,54 @@ export function App(): React.JSX.Element {
             <span className="section-label settings-subsection">
               {t('application').toUpperCase()}
             </span>
+            {project && (
+              <div className="policy-panel">
+                <div className="provider-row" aria-live="polite">
+                  <div>
+                    <strong>{t('providerUsage')}</strong>
+                    <span>
+                      {providerUsage
+                        ? t('providerUsageSummary', {
+                            period: providerUsage.period,
+                            cost: (providerUsage.costUsdMicros / 1_000_000).toFixed(4),
+                            runs: String(providerUsage.runCount),
+                            unpriced: String(providerUsage.unpricedRunCount),
+                          })
+                        : t('loadingUsage')}
+                    </span>
+                  </div>
+                </div>
+                <div className="provider-form policy-form">
+                  <label>
+                    {t('monthlyBudget')}
+                    <input
+                      inputMode="decimal"
+                      min="0"
+                      placeholder={t('unlimited')}
+                      value={monthlyBudgetUsd}
+                      onChange={(event) => setMonthlyBudgetUsd(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {t('remoteMediaPolicy')}
+                    <select
+                      value={remoteMediaPolicy}
+                      onChange={(event) =>
+                        setRemoteMediaPolicy(event.target.value as 'allow' | 'confirm' | 'deny')
+                      }
+                    >
+                      <option value="confirm">{t('remoteConfirm')}</option>
+                      <option value="allow">{t('remoteAllow')}</option>
+                      <option value="deny">{t('remoteDeny')}</option>
+                    </select>
+                  </label>
+                </div>
+                <p>{t('budgetDisclosure')}</p>
+                <button className="secondary compact" disabled={busy} onClick={saveProjectPolicies}>
+                  {t('savePolicies')}
+                </button>
+              </div>
+            )}
             <div className="provider-row">
               <div>
                 <strong>{t('language')}</strong>

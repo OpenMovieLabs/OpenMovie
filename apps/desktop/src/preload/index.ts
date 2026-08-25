@@ -7,6 +7,7 @@ import type {
   HarnessHealth,
   InitializeResult,
   ProjectSummary,
+  ProviderUsageSummary,
   StorageReport,
   RevisionRecord,
   RevisionProposalRecord,
@@ -45,6 +46,10 @@ export type OpenMovieDesktopApi = {
   runDoctor: (deep?: boolean) => Promise<DoctorReport>;
   getStorageReport: () => Promise<StorageReport>;
   cleanProjectCache: () => Promise<StorageReport>;
+  updateProjectPolicies: (
+    monthlyBudgetUsdMicros: number | null,
+    remoteMediaPolicy: 'allow' | 'confirm' | 'deny',
+  ) => Promise<ProjectSummary>;
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
@@ -105,6 +110,7 @@ export type OpenMovieDesktopApi = {
   deleteSecret: (id: string) => Promise<boolean>;
   listHarnesses: () => Promise<HarnessHealth[]>;
   listProviders: () => Promise<ProviderProfile[]>;
+  getProviderUsage: () => Promise<ProviderUsageSummary>;
   saveProvider: (input: SaveProviderInput) => Promise<ProviderProfile>;
   testProvider: (providerId: string) => Promise<ProviderProbe>;
 };
@@ -219,6 +225,12 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:project-storage-report') as Promise<StorageReport>,
   cleanProjectCache: () =>
     ipcRenderer.invoke('openmovie:project-storage-clean') as Promise<StorageReport>,
+  updateProjectPolicies: (monthlyBudgetUsdMicros, remoteMediaPolicy) =>
+    ipcRenderer.invoke(
+      'openmovie:project-policy-update',
+      monthlyBudgetUsdMicros,
+      remoteMediaPolicy,
+    ) as Promise<ProjectSummary>,
   renameProject: (title) =>
     ipcRenderer.invoke('openmovie:project-rename', title) as Promise<ProjectSummary>,
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,
@@ -313,6 +325,8 @@ const api: OpenMovieDesktopApi = {
   deleteSecret: (id) => ipcRenderer.invoke('openmovie:secret-delete', id) as Promise<boolean>,
   listHarnesses: () => ipcRenderer.invoke('openmovie:harness-list') as Promise<HarnessHealth[]>,
   listProviders: () => ipcRenderer.invoke('openmovie:provider-list') as Promise<ProviderProfile[]>,
+  getProviderUsage: () =>
+    ipcRenderer.invoke('openmovie:provider-usage-summary') as Promise<ProviderUsageSummary>,
   saveProvider: (input) =>
     ipcRenderer.invoke('openmovie:provider-save', input) as Promise<ProviderProfile>,
   testProvider: (providerId) =>

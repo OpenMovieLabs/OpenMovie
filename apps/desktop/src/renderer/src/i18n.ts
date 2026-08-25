@@ -30,6 +30,19 @@ const en = {
   close: 'Close',
   skipToContent: 'Skip to main content',
   busy: 'OpenMovie is working',
+  providerUsage: 'Provider usage and controls',
+  providerUsageSummary: '{{period}} · ${{cost}} reported · {{runs}} runs · {{unpriced}} unpriced',
+  loadingUsage: 'Loading usage…',
+  monthlyBudget: 'Monthly reported-cost limit (USD)',
+  unlimited: 'No limit',
+  remoteMediaPolicy: 'Remote data policy',
+  remoteConfirm: 'Confirm before upload',
+  remoteAllow: 'Allow remote Providers',
+  remoteDeny: 'Block remote Providers',
+  budgetDisclosure:
+    'The limit uses costs reported by Provider responses. Unpriced calls are listed but cannot be included in a guaranteed hard cap.',
+  savePolicies: 'Save project policy',
+  invalidBudget: 'Monthly budget must be an empty or non-negative USD amount.',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -64,6 +77,19 @@ const zh: Record<TranslationKey, string> = {
   close: '关闭',
   skipToContent: '跳到主要内容',
   busy: 'OpenMovie 正在工作',
+  providerUsage: 'Provider 用量与控制',
+  providerUsageSummary: '{{period}} · 已报告 ${{cost}} · {{runs}} 次调用 · {{unpriced}} 次未定价',
+  loadingUsage: '正在载入用量…',
+  monthlyBudget: '月度已报告费用上限（美元）',
+  unlimited: '不设上限',
+  remoteMediaPolicy: '远程数据策略',
+  remoteConfirm: '上传前确认',
+  remoteAllow: '允许远程 Provider',
+  remoteDeny: '禁止远程 Provider',
+  budgetDisclosure:
+    '费用上限依据 Provider 响应中明确报告的费用；未定价调用会单独显示，因此无法承诺覆盖所有 Provider 的绝对硬上限。',
+  savePolicies: '保存工程策略',
+  invalidBudget: '月度预算必须留空或填写非负美元金额。',
 };
 
 const catalogs: Record<UiLocale, Record<TranslationKey, string>> = { en, 'zh-CN': zh };

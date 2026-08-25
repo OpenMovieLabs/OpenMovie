@@ -1104,6 +1104,18 @@ h1 {
   grid-column: span 1;
 }
 
+.policy-panel {
+  margin-bottom: 18px;
+}
+
+.policy-form {
+  margin: 4px 0 10px;
+}
+
+.policy-panel > p {
+  margin: 0 0 10px;
+}
+
 @media (max-width: 760px) {
   .home {
     width: min(100% - 36px, 1120px);

@@ -14,7 +14,12 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 ## Status
 
-Active implementation. The desktop vertical slice now covers portable Movie IR projects, Brief/Story Bible editing, Scene/Shot authoring, deterministic Timeline assembly and MP4 Current Cut rendering, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers with credential-safe connection tests, asynchronous video-provider jobs, immutable image/video Takes, multimodal Take analysis, deterministic evaluations, structured feedback, reviewable Direct Agent proposals, Take selection, structured diffs, and creative branches.
+Pre-release beta engineering baseline. The end-to-end desktop workflow, portable Movie IR, Revision
+and Branch model, recoverable tasks, local Harnesses, API Providers, immutable Takes, local media
+derivation, multimodal analysis, evaluation/regression gates, timecoded feedback, Current Cut render,
+backup/repair, signed release pipeline, auto-update, bilingual accessible shell, performance gate and
+Plugin development mode are implemented. Real-provider compatibility and creative quality remain
+provider/model dependent and require opt-in testing.
 
 ## Documentation
 
@@ -25,6 +30,10 @@ Active implementation. The desktop vertical slice now covers portable Movie IR p
 - [Protocol contracts](./docs/PROTOCOLS.md)
 - [Security design](./docs/SECURITY.md)
 - [Implementation plan](./docs/IMPLEMENTATION_PLAN.md)
+- [用户手册（简体中文）](./docs/USER_GUIDE.zh-CN.md)
+- [Development guide](./docs/DEVELOPMENT.md)
+- [Troubleshooting](./docs/TROUBLESHOOTING.md)
+- [Releasing](./docs/RELEASING.md)
 - [Architecture decisions](./docs/adr/README.md)
 - [Documentation index](./docs/README.md)
 - [Contributing](./CONTRIBUTING.md)
@@ -53,6 +62,8 @@ pnpm dev
 Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Story and Movie IR commits, targeted Fake Provider generation, Object Store import, Take/evaluation/analysis persistence, Timeline assembly, and Harness detection.
 
 Video analysis samples deterministic keyframes with FFmpeg and submits those frames through the configured vision-capable Provider. Signed Windows and macOS releases bundle pinned LGPL FFmpeg/FFprobe Sidecars with source and license notices, so end users do not install media tools separately. Development builds discover `ffmpeg` on `PATH`; `OPENMOVIE_FFMPEG_PATH` and `OPENMOVIE_FFPROBE_PATH` remain explicit overrides. Image analysis does not require FFmpeg.
+
+Project settings include a versioned remote-Provider policy (`allow`, approval-first `confirm`, or `deny`) and an optional monthly reported-cost limit. The local usage ledger records Provider/Model/capability provenance, token usage, explicit Provider-reported cost, and unpriced calls without presenting unknown cost as free.
 
 The Timeline renders selected image and video Takes into a normalized MP4, preferring H.264 encoders and falling back to the LGPL MPEG-4 encoder when necessary. Every render records its exact source Revision, Timeline revision, duration, object URI, and content hash. The Desktop previews the latest render without exposing arbitrary local paths.
 

@@ -20,7 +20,11 @@
 | [Performance](./PERFORMANCE.md)                 | 离线性能工作负载、阈值和 CI 门禁             | Implementation Baseline |
 | [Accessibility](./ACCESSIBILITY.md)             | 键盘、辅助技术与中英本地化基础               | Implementation Baseline |
 | [Plugin Development](./PLUGIN_DEVELOPMENT.md)   | 隔离进程 Plugin Manifest 与开发模式          | Implementation Baseline |
-| [Implementation Plan](./IMPLEMENTATION_PLAN.md) | Milestone、Issues、CI 和 DoD                 | Ready to Start          |
+| [用户手册](./USER_GUIDE.zh-CN.md)               | 桌面创作、Provider、版本与备份               | Beta Guide              |
+| [Development](./DEVELOPMENT.md)                 | 本地开发、包边界、测试与 Contract            | Beta Guide              |
+| [Troubleshooting](./TROUBLESHOOTING.md)         | 常见故障、恢复和安全报告信息                 | Beta Guide              |
+| [Releasing](./RELEASING.md)                     | 签名、公证、Sidecar 与发布验收               | Maintainer Guide        |
+| [Implementation Plan](./IMPLEMENTATION_PLAN.md) | Milestone、Issues、CI 和 DoD                 | Beta Baseline           |
 | [ADR Index](./adr/README.md)                    | 已接受架构决策                               | Accepted                |
 
 ## 阅读顺序
@@ -66,6 +70,7 @@ IMPLEMENTATION_PLAN.md
 
 仓库协作与漏洞报告入口分别见 [CONTRIBUTING](../CONTRIBUTING.md) 和 [Security Policy](../SECURITY.md)。
 
-## 开始实现
+## 当前阶段
 
-从 [Implementation Plan 的 M0](./IMPLEMENTATION_PLAN.md#4-m0repository-foundation) 开始，依次创建首批 Issues。具体 Runtime 和依赖版本在第一个工程 PR 中选定、锁定并记录，不应依赖开发机器的全局版本。
+M0–M5 和 M6 Beta Hardening 基线已经实现。后续变更以
+[Implementation Plan](./IMPLEMENTATION_PLAN.md) 的 Exit Criteria、本文档事实层级和回归门禁为准。

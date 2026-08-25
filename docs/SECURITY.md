@@ -224,6 +224,15 @@ Redactor 覆盖：
 
 Restricted 数据不允许外发。
 
+当前实现基线在 Project Manifest 中提供 `remote_media_policy: allow | confirm | deny`，默认
+`confirm`。Core 在 Task 创建时要求审批，并在每个远程 Provider Step 真正执行前再次检查；因此绕过
+Renderer 不能跳过策略。策略变更是带乐观并发检查的 Revision。MVP 尚未实现素材级数据分类与
+Provider 级授权矩阵，所以 `confirm` 目前按整个远程 Task 审批，`deny` 按整个项目阻断远程 Provider。
+
+月度预算只使用 Provider 响应中明确报告的 `cost_usd_micros`。每次成功调用的请求哈希、Provider、
+Model、Capability、Job ID 和可用 Usage 写入项目数据库；未返回价格的调用标记为 unpriced。达到已报告
+费用上限会阻断后续远程 Step，但这不是对未定价服务的绝对费用保证。
+
 ## 13. Provider URL
 
 - 远程 Provider 默认只允许 HTTPS。

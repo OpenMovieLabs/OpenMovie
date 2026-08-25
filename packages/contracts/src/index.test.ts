@@ -19,4 +19,19 @@ describe('core contracts', () => {
   it('rejects incompatible major versions', () => {
     expect(() => assertProtocolCompatible('1.0.0')).toThrow(/major mismatch/);
   });
+
+  it('reserves local Provider namespaces from remote profiles', () => {
+    expect(() =>
+      coreCommandSchema.parse({
+        id: 'provider-1',
+        method: 'provider.configure_openai_compatible',
+        params: {
+          id: 'plugin.remote-disguise',
+          baseUrl: 'https://provider.example/v1/',
+          apiKey: 'test',
+          imageGeneration: false,
+        },
+      }),
+    ).toThrow(/reserved local namespace/);
+  });
 });
