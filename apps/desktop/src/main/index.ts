@@ -34,6 +34,7 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell 
 import electronUpdater from 'electron-updater';
 
 import { CoreClient } from './core-client.js';
+import { resolvePackagedMediaSidecar } from './media-sidecar.js';
 import { probeProvider } from './provider-probe.js';
 import { EncryptedSecretStore } from './secret-store.js';
 import { DesktopUpdateManager } from './update-manager.js';
@@ -65,6 +66,11 @@ function supportedPlatform(): 'darwin' | 'win32' | 'linux' {
 function coreEntry(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'core', 'main.cjs');
   return resolve(app.getAppPath(), '../core/dist/main.cjs');
+}
+
+function mediaSidecarEnvironment(): NodeJS.ProcessEnv {
+  if (!app.isPackaged) return {};
+  return resolvePackagedMediaSidecar(process.resourcesPath, process.platform);
 }
 
 function parseEntityCommit(value: unknown): unknown {
@@ -117,7 +123,7 @@ function createWindow(): BrowserWindow {
 void app
   .whenReady()
   .then(async () => {
-    core = new CoreClient(coreEntry());
+    core = new CoreClient(coreEntry(), mediaSidecarEnvironment());
     await core.start();
     protocol.handle('openmovie-artifact', (request) => {
       if (!activeProjectRoot) return new Response('No project is open', { status: 404 });
@@ -903,6 +909,15 @@ void app
 
     await initialize();
     if (process.env.OPENMOVIE_SMOKE_TEST === '1') {
+      const smokeHealth = coreHealthSchema.parse(
+        await core.request({ method: 'core.health', params: {} }),
+      );
+      if (
+        app.isPackaged &&
+        (!smokeHealth.media.ffmpeg.available || smokeHealth.media.ffmpeg.source !== 'bundled')
+      ) {
+        throw new Error('Packaged FFmpeg Sidecar is unavailable');
+      }
       const temporaryRoot = await mkdtemp(join(tmpdir(), 'openmovie-desktop-smoke-'));
       const projectRoot = join(temporaryRoot, 'movie');
       try {

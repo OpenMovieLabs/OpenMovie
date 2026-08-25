@@ -296,30 +296,30 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 
 ### 9.1 Media
 
-- FFmpeg/FFprobe Sidecar。
-- 图片元数据。
+- [x] Windows/macOS FFmpeg/FFprobe LGPL Sidecar、固定版本、来源和 SHA-256。
+- [x] 图片元数据。
 - 视频代理。
-- Thumbnail。
+- [x] 确定性关键帧 Thumbnail。
 - Waveform。
-- 受控 Artifact Protocol。
+- [x] 受控 Artifact Protocol。
 
 ### 9.2 Video Analysis
 
 - Shot Boundary。
-- Keyframe Sampling。
+- [x] Keyframe Sampling。
 - Audio Extraction。
 - Transcription Port。
-- Multimodal Batch Analysis。
-- Timestamped Result。
+- [x] Multimodal Batch Analysis。
+- [x] Timestamped Result。
 
 ### 9.3 Video Generation
 
-- Media Generation Contract。
-- Fake Async Video Provider。
-- 至少一个真实 Video Provider Adapter。
+- [x] Media Generation Contract。
+- [x] Fake Async Video Provider。
+- [x] 声明式真实异步 HTTP Video Provider Adapter。
 - 第二个 Provider Adapter 或可执行兼容 Fixture。
-- Poll、Cancel、Resume、Collect。
-- 多 Provider Take 对比。
+- [x] Poll、Cancel、Resume、Collect。
+- [x] 多 Provider Take 对比。
 
 ### 9.4 Evaluation
 

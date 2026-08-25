@@ -1250,6 +1250,11 @@ export function App(): React.JSX.Element {
                   `Core ${runtime.health.status} · protocol ${runtime.initialize.protocolVersion}`}
               </div>
               <div className="harness-list">
+                {runtime.kind === 'ready' && (
+                  <span data-available={runtime.health.media.ffmpeg.available}>
+                    FFmpeg {runtime.health.media.ffmpeg.source}
+                  </span>
+                )}
                 {harnesses.map((harness) => (
                   <span key={harness.id} data-available={harness.available}>
                     {harness.name}
@@ -1540,6 +1545,25 @@ export function App(): React.JSX.Element {
                 )}
               </div>
             </div>
+            {runtime.kind === 'ready' && (
+              <div className="provider-row">
+                <div>
+                  <strong>FFmpeg media runtime</strong>
+                  <span>
+                    {runtime.health.media.ffmpeg.available
+                      ? `${runtime.health.media.ffmpeg.source} · ${runtime.health.media.ffmpeg.version ?? 'version available'}`
+                      : 'Unavailable · reinstall OpenMovie before rendering or video analysis'}
+                  </span>
+                </div>
+                <span
+                  className={
+                    runtime.health.media.ffmpeg.available ? 'key-state ready' : 'key-state'
+                  }
+                >
+                  {runtime.health.media.ffmpeg.available ? 'Ready' : 'Missing'}
+                </span>
+              </div>
+            )}
             {error && <div className="error-banner">{error}</div>}
             <div className="modal-actions">
               <button className="secondary" onClick={() => setShowSettings(false)}>

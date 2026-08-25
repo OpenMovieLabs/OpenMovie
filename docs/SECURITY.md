@@ -324,6 +324,9 @@ Plugin Manifest 声明：
 - Renderer 只读取归一化状态，不接触下载 URL、签名证书或网络错误正文。
 - Public Tag Release 缺少任一平台签名 Secret 时失败；macOS 同时要求 Notarization 凭据。
 - `latest*.yml` 的 SHA-512、平台代码签名、发布附件 SHA-256 清单和 CycloneDX SBOM 构成分层完整性证据。
+- FFmpeg Sidecar 不在运行时下载；只在受控 Release Job 中从固定 URL 获取并强制核对 SHA-256，随后与应用一同签名和发布。
+- macOS Sidecar 从 FFmpeg 官方签名发布源码构建并检查 `--enable-gpl` 不存在；Windows 只接受固定 BtbN `lgpl` 资产并再次检查配置。
+- Core 只执行 Main 解析出的打包绝对路径或用户启动时显式提供的开发覆盖，Project、Provider 响应和 Renderer 都不能替换 Sidecar 路径。
 
 ## 19. Object Store
 

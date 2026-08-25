@@ -21,13 +21,16 @@ export class CoreClient {
   private child: ChildProcess | undefined;
   private readonly pending = new Map<string, PendingRequest>();
 
-  constructor(private readonly entry: string) {}
+  constructor(
+    private readonly entry: string,
+    private readonly environment: NodeJS.ProcessEnv = {},
+  ) {}
 
   async start(): Promise<void> {
     if (this.child) return;
 
     const child = fork(this.entry, [], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      env: { ...process.env, ...this.environment, ELECTRON_RUN_AS_NODE: '1' },
       execArgv: [],
       silent: true,
     });

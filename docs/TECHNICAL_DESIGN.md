@@ -1285,6 +1285,10 @@ interface SecretStore {
 - 处理 Windows Defender、防火墙和首次运行延迟。
 - 处理 macOS App Sandbox、Quarantine 和 Gatekeeper。
 
+正式安装包把 FFmpeg 与 FFprobe 作为 `Resources/ffmpeg/bin` 下的独立 Sidecar 分发，Main 在启动 Core 时通过显式环境覆盖传入绝对路径；Renderer 只看到 `bundled` / `custom` / `system` 与稳定健康状态。开发版仍允许 PATH 或 `OPENMOVIE_FFMPEG_PATH` / `OPENMOVIE_FFPROBE_PATH`。macOS 从固定 SHA-256 的 FFmpeg 9.0.1 官方源码构建 LGPL、禁网络、无 GPL/nonfree 组件的静态 CLI；Windows 使用固定 BtbN Release Tag 与资产 SHA-256 的 LGPL Static Build。License、源代码 URL、构建脚本版本和校验值随 Sidecar 分发。
+
+Timeline 在运行时读取 `ffmpeg -encoders`，依次选择 `libx264`、`h264_videotoolbox`、`h264_mf` 和内置 `mpeg4`。因此开发环境可使用高质量 H.264，最小 LGPL Sidecar 仍有确定的 MP4 Fallback；不因某个 GPL 编码器缺失而让渲染主路径失效。
+
 ### 18.3 打包
 
 目标：
@@ -1682,5 +1686,7 @@ ADR 是架构选择的事实来源。本节只提供导航；若后续改变 Acc
 - [Create a model response — official OpenAI API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)：用于确认文本、图片和文件输入、结构化文本/JSON 输出及自定义 Tool 等多模态协议基线。
 - [Claude Code CLI reference — official Anthropic documentation](https://code.claude.com/docs/en/cli-usage)：用于确认 print mode、JSON output、JSON Schema、Plan permission mode、Tool 白名单与非持久 Session 参数。
 - [Electron safeStorage — official Electron documentation](https://www.electronjs.org/docs/latest/api/safe-storage)：用于确认 macOS Keychain、Windows DPAPI 以及异步加解密边界。
+- [FFmpeg Download — official FFmpeg project](https://ffmpeg.org/download.html)：用于固定源码、签名发布和由项目列出的二进制构建入口。
+- [BtbN FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds)：用于 Windows LGPL Sidecar 的可复现构建脚本与固定 Release 资产。
 
 第三方 Harness 的具体 Adapter 在实现时必须重新核对其当时的官方接口和许可。本方案只固定 OpenMovie 的 Adapter Contract，不把未经确认的第三方行为写成稳定事实。

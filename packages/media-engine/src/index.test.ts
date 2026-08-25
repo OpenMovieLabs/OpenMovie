@@ -4,12 +4,21 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { FfmpegTimelineRenderer, sampleTimestamps } from './index.js';
+import { FfmpegTimelineRenderer, sampleTimestamps, selectVideoEncoder } from './index.js';
 
 describe('media sampling', () => {
   it('creates deterministic in-range timecode samples', () => {
     expect(sampleTimestamps(4_000_000, 4)).toEqual([250_000, 1_416_667, 2_583_333, 3_750_000]);
     expect(sampleTimestamps(100_000, 1)).toEqual([50_000]);
+  });
+
+  it('selects the best available LGPL-compatible fallback encoder', () => {
+    expect(selectVideoEncoder(' V..... libx264 H.264\n V..... mpeg4 MPEG-4')).toBe('libx264');
+    expect(selectVideoEncoder(' V..... h264_videotoolbox VideoToolbox\n V..... mpeg4 MPEG-4')).toBe(
+      'h264_videotoolbox',
+    );
+    expect(selectVideoEncoder(' V..... mpeg4 MPEG-4')).toBe('mpeg4');
+    expect(() => selectVideoEncoder(' A..... aac AAC')).toThrow(/no supported/);
   });
 
   it('renders selected image clips when FFmpeg is available', async () => {

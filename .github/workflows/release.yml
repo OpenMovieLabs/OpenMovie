@@ -52,6 +52,71 @@ jobs:
           fi
       - run: node scripts/set-version.mjs "$OPENMOVIE_VERSION"
         shell: bash
+      - name: Build pinned LGPL FFmpeg Sidecar (macOS)
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ffmpeg-9.0.1.tar.xz"
+          source_root="$RUNNER_TEMP/ffmpeg-source"
+          install_root="$RUNNER_TEMP/ffmpeg-install"
+          destination="apps/desktop/resources/ffmpeg"
+          curl --fail --location --retry 3 --output "$archive" https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz
+          echo "cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635  $archive" | shasum -a 256 --check
+          mkdir -p "$source_root" "$install_root" "$destination/bin"
+          tar -xf "$archive" -C "$source_root" --strip-components=1
+          pushd "$source_root"
+          ./configure \
+            --prefix="$install_root" \
+            --disable-debug \
+            --disable-doc \
+            --disable-ffplay \
+            --disable-network \
+            --disable-autodetect \
+            --enable-zlib \
+            --enable-videotoolbox \
+            --enable-audiotoolbox \
+            --enable-static \
+            --disable-shared
+          make -j3
+          make install
+          popd
+          cp "$install_root/bin/ffmpeg" "$install_root/bin/ffprobe" "$destination/bin/"
+          cp "$source_root/LICENSE.md" "$source_root/COPYING.LGPLv2.1" "$source_root/COPYING.LGPLv3" "$destination/"
+          "$destination/bin/ffmpeg" -hide_banner -version
+          configuration=$("$destination/bin/ffmpeg" -hide_banner -version 2>&1)
+          if grep -q -- '--enable-gpl' <<<"$configuration"; then
+            echo "Refusing to package a GPL-enabled FFmpeg build" >&2
+            exit 1
+          fi
+          encoders=$("$destination/bin/ffmpeg" -hide_banner -encoders 2>/dev/null)
+          grep -q ' mpeg4 ' <<<"$encoders"
+      - name: Download pinned LGPL FFmpeg Sidecar (Windows)
+        if: matrix.target == 'win'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg-win64-lgpl.zip'
+          $expanded = Join-Path $env:RUNNER_TEMP 'ffmpeg-win64-lgpl'
+          $destination = 'apps/desktop/resources/ffmpeg'
+          $url = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-20-13-45/ffmpeg-n9.0.1-6-g9d4ca21220-win64-lgpl-9.0.zip'
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          $expected = 'ccaa910db95451121482a5ebcb8c682123cb4f8a5bd5170fde4a814d7b437772'
+          if ($actual -ne $expected) { throw "FFmpeg archive checksum mismatch" }
+          Expand-Archive -Path $archive -DestinationPath $expanded
+          New-Item -ItemType Directory -Force -Path "$destination/bin" | Out-Null
+          $ffmpeg = Get-ChildItem -Path $expanded -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          $ffprobe = Get-ChildItem -Path $expanded -Recurse -Filter ffprobe.exe | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) { throw 'FFmpeg archive is missing executables' }
+          Copy-Item $ffmpeg.FullName "$destination/bin/ffmpeg.exe"
+          Copy-Item $ffprobe.FullName "$destination/bin/ffprobe.exe"
+          Get-ChildItem -Path $expanded -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING).*' } | Copy-Item -Destination $destination
+          & "$destination/bin/ffmpeg.exe" -hide_banner -version
+          $configuration = (& "$destination/bin/ffmpeg.exe" -hide_banner -version 2>&1) -join "`n"
+          if ($configuration -match '--enable-gpl') { throw 'Refusing to package a GPL-enabled FFmpeg build' }
+          $encoders = (& "$destination/bin/ffmpeg.exe" -hide_banner -encoders 2>&1) -join "`n"
+          if ($encoders -notmatch '\smpeg4\s') { throw 'FFmpeg Sidecar lacks the MPEG-4 fallback encoder' }
       - run: pnpm check
       - run: pnpm build
       - name: Verify release signing configuration

@@ -22,6 +22,8 @@ export type TimelineRenderOptions = {
   onProgress?: (completed: number, total: number) => void;
 };
 
+export type VideoEncoder = 'libx264' | 'h264_videotoolbox' | 'h264_mf' | 'mpeg4';
+
 export function sampleTimestamps(durationUs: number, count = 4): number[] {
   if (!Number.isSafeInteger(durationUs) || durationUs <= 0) throw new Error('Invalid duration');
   if (!Number.isSafeInteger(count) || count <= 0 || count > 20)
@@ -102,6 +104,11 @@ export class FfmpegTimelineRenderer {
     if (options.clips.length === 0) throw new Error('Timeline has no selected media to render');
     await mkdir(options.workRoot, { recursive: true });
     const rate = `${options.frameRate.numerator}/${options.frameRate.denominator}`;
+    const videoEncoders = supportedVideoEncoders(
+      await run(this.executable, ['-hide_banner', '-encoders'], options.signal),
+    );
+    if (videoEncoders.length === 0) throw new Error('FFmpeg has no supported MP4 video encoder');
+    let selectedVideoEncoder: VideoEncoder | undefined;
     const filter = [
       `scale=${options.width}:${options.height}:force_original_aspect_ratio=decrease`,
       `pad=${options.width}:${options.height}:(ow-iw)/2:(oh-ih)/2:color=black`,
@@ -126,46 +133,57 @@ export class FfmpegTimelineRenderer {
             '-i',
             `anullsrc=channel_layout=stereo:sample_rate=${options.audioSampleRate}`,
           ];
-      await run(
-        this.executable,
-        [
-          '-hide_banner',
-          '-loglevel',
-          'error',
-          '-nostdin',
-          ...input,
-          ...silentAudioInput,
-          '-t',
-          duration,
-          '-map',
-          '0:v:0',
-          '-map',
-          hasSourceAudio ? '0:a:0' : '1:a:0',
-          '-vf',
-          filter,
-          '-c:v',
-          'libx264',
-          '-preset',
-          'medium',
-          '-crf',
-          '18',
-          '-c:a',
-          'aac',
-          '-b:a',
-          '192k',
-          '-ar',
-          String(options.audioSampleRate),
-          '-ac',
-          '2',
-          '-af',
-          'apad',
-          '-movflags',
-          '+faststart',
-          '-y',
-          segment,
-        ],
-        options.signal,
-      );
+      const segmentArguments = (videoEncoder: VideoEncoder): string[] => [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-nostdin',
+        ...input,
+        ...silentAudioInput,
+        '-t',
+        duration,
+        '-map',
+        '0:v:0',
+        '-map',
+        hasSourceAudio ? '0:a:0' : '1:a:0',
+        '-vf',
+        filter,
+        '-c:v',
+        videoEncoder,
+        ...encoderArguments(videoEncoder),
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-ar',
+        String(options.audioSampleRate),
+        '-ac',
+        '2',
+        '-af',
+        'apad',
+        '-movflags',
+        '+faststart',
+        '-y',
+        segment,
+      ];
+      if (selectedVideoEncoder) {
+        await run(this.executable, segmentArguments(selectedVideoEncoder), options.signal);
+      } else {
+        let lastError: unknown;
+        for (const videoEncoder of videoEncoders) {
+          try {
+            await run(this.executable, segmentArguments(videoEncoder), options.signal);
+            selectedVideoEncoder = videoEncoder;
+            break;
+          } catch (error) {
+            if (options.signal?.aborted) throw error;
+            lastError = error;
+          }
+        }
+        if (!selectedVideoEncoder) {
+          throw lastError instanceof Error ? lastError : new Error('No video encoder succeeded');
+        }
+      }
       segments.push(segment);
       options.onProgress?.(index + 1, options.clips.length + 1);
     }
@@ -223,6 +241,28 @@ export class FfmpegTimelineRenderer {
       return false;
     }
   }
+}
+
+export function selectVideoEncoder(encoders: string): VideoEncoder {
+  const selected = supportedVideoEncoders(encoders)[0];
+  if (selected) return selected;
+  throw new Error('FFmpeg has no supported MP4 video encoder');
+}
+
+function supportedVideoEncoders(encoders: string): VideoEncoder[] {
+  const supported: VideoEncoder[] = [];
+  for (const encoder of ['libx264', 'h264_videotoolbox', 'h264_mf', 'mpeg4'] as const) {
+    if (new RegExp(`(?:^|\\s)${encoder.replaceAll('_', '\\_')}(?:\\s|$)`, 'm').test(encoders)) {
+      supported.push(encoder);
+    }
+  }
+  return supported;
+}
+
+function encoderArguments(encoder: VideoEncoder): string[] {
+  if (encoder === 'libx264') return ['-preset', 'medium', '-crf', '18'];
+  if (encoder === 'mpeg4') return ['-q:v', '3'];
+  return ['-b:v', '8M'];
 }
 
 function quote(path: string): string {

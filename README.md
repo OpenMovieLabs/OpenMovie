@@ -52,9 +52,9 @@ pnpm dev
 
 Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Story and Movie IR commits, targeted Fake Provider generation, Object Store import, Take/evaluation/analysis persistence, Timeline assembly, and Harness detection.
 
-Video analysis samples deterministic keyframes with FFmpeg and submits those frames through the configured vision-capable Provider. Development builds discover `ffmpeg` on `PATH`; set `OPENMOVIE_FFMPEG_PATH` to an explicit executable when necessary. Image analysis does not require FFmpeg.
+Video analysis samples deterministic keyframes with FFmpeg and submits those frames through the configured vision-capable Provider. Signed Windows and macOS releases bundle pinned LGPL FFmpeg/FFprobe Sidecars with source and license notices, so end users do not install media tools separately. Development builds discover `ffmpeg` on `PATH`; `OPENMOVIE_FFMPEG_PATH` and `OPENMOVIE_FFPROBE_PATH` remain explicit overrides. Image analysis does not require FFmpeg.
 
-The Timeline can render selected image and video Takes into a normalized H.264 MP4. Every render records its exact source Revision, Timeline revision, duration, object URI, and content hash. The Desktop previews the latest render without exposing arbitrary local paths.
+The Timeline renders selected image and video Takes into a normalized MP4, preferring H.264 encoders and falling back to the LGPL MPEG-4 encoder when necessary. Every render records its exact source Revision, Timeline revision, duration, object URI, and content hash. The Desktop previews the latest render without exposing arbitrary local paths.
 
 ### CLI and project integrity
 

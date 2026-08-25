@@ -399,6 +399,13 @@ export const coreHealthSchema = z.object({
   status: z.literal('ok'),
   startedAt: z.string().datetime(),
   uptimeMs: z.number().nonnegative(),
+  media: z.object({
+    ffmpeg: z.object({
+      available: z.boolean(),
+      version: z.string().optional(),
+      source: z.enum(['bundled', 'custom', 'system']),
+    }),
+  }),
 });
 
 export const projectSummarySchema = z.object({

@@ -9,10 +9,11 @@ const [lockText, packageText] = await Promise.all([
   readFile(resolve(root, 'package.json'), 'utf8'),
 ]);
 const packageMetadata = JSON.parse(packageText);
-const components = parsePackages(lockText).map(({ name, version }) => {
+const packageComponents = parsePackages(lockText).map(({ name, version }) => {
   const purl = `pkg:npm/${purlName(name)}@${encodeURIComponent(version)}`;
   return { type: 'library', 'bom-ref': purl, name, version, purl };
 });
+const components = [...packageComponents, ...ffmpegSidecarComponents()];
 const lockDigest = createHash('sha256').update(lockText).digest('hex');
 const uuid = `${lockDigest.slice(0, 8)}-${lockDigest.slice(8, 12)}-5${lockDigest.slice(13, 16)}-a${lockDigest.slice(17, 20)}-${lockDigest.slice(20, 32)}`;
 const version = String(process.env.OPENMOVIE_VERSION ?? packageMetadata.version ?? '0.0.0').replace(
@@ -82,4 +83,48 @@ function purlName(name) {
   const separator = name.indexOf('/');
   if (separator < 0) return encodeURIComponent(name);
   return `%40${encodeURIComponent(name.slice(1, separator))}/${encodeURIComponent(name.slice(separator + 1))}`;
+}
+
+function ffmpegSidecarComponents() {
+  return [
+    {
+      type: 'application',
+      'bom-ref': 'pkg:generic/ffmpeg@9.0.1?os=macos',
+      name: 'FFmpeg macOS Sidecar',
+      version: '9.0.1',
+      purl: 'pkg:generic/ffmpeg@9.0.1?os=macos',
+      licenses: [{ expression: 'LGPL-2.1-or-later' }],
+      hashes: [
+        {
+          alg: 'SHA-256',
+          content: 'cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635',
+        },
+      ],
+      externalReferences: [
+        { type: 'distribution', url: 'https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz' },
+        { type: 'vcs', url: 'https://git.ffmpeg.org/ffmpeg.git' },
+      ],
+    },
+    {
+      type: 'application',
+      'bom-ref': 'pkg:generic/ffmpeg@9.0.1-6-g9d4ca21220?arch=x86_64&os=windows',
+      name: 'FFmpeg Windows Sidecar',
+      version: '9.0.1-6-g9d4ca21220',
+      purl: 'pkg:generic/ffmpeg@9.0.1-6-g9d4ca21220?arch=x86_64&os=windows',
+      licenses: [{ expression: 'LGPL-2.1-or-later' }],
+      hashes: [
+        {
+          alg: 'SHA-256',
+          content: 'ccaa910db95451121482a5ebcb8c682123cb4f8a5bd5170fde4a814d7b437772',
+        },
+      ],
+      externalReferences: [
+        {
+          type: 'distribution',
+          url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-20-13-45/ffmpeg-n9.0.1-6-g9d4ca21220-win64-lgpl-9.0.zip',
+        },
+        { type: 'vcs', url: 'https://github.com/BtbN/FFmpeg-Builds/tree/48576f1' },
+      ],
+    },
+  ];
 }

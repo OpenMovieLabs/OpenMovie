@@ -288,9 +288,7 @@ export class CoreServer {
       }
       const availability = await this.frames.detect();
       if (!availability.available) {
-        throw new Error(
-          'Video analysis requires FFmpeg. Install ffmpeg or set OPENMOVIE_FFMPEG_PATH.',
-        );
+        throw new Error('FFmpeg is unavailable. Reinstall OpenMovie or set OPENMOVIE_FFMPEG_PATH.');
       }
       const shot = movieEntitySchema.parse(await project.movies.read('shot', take.shotId));
       if (shot.type !== 'shot') throw new Error('Take target is not a Shot');
@@ -470,7 +468,8 @@ export class CoreServer {
           },
         };
       }
-      case 'core.health':
+      case 'core.health': {
+        const ffmpeg = await this.frames.detect();
         return {
           id: command.id,
           ok: true,
@@ -478,8 +477,20 @@ export class CoreServer {
             status: 'ok',
             startedAt: startedAt.toISOString(),
             uptimeMs: Date.now() - startedAt.getTime(),
+            media: {
+              ffmpeg: {
+                ...ffmpeg,
+                source:
+                  process.env.OPENMOVIE_FFMPEG_SOURCE === 'bundled'
+                    ? 'bundled'
+                    : process.env.OPENMOVIE_FFMPEG_PATH
+                      ? 'custom'
+                      : 'system',
+              },
+            },
           },
         };
+      }
       case 'project.create': {
         await this.close();
         this.project = await ProjectStore.create(command.params.path, {

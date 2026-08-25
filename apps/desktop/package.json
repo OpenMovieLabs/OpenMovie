@@ -63,6 +63,13 @@
       {
         "from": "../core/build/Release/better_sqlite3.node",
         "to": "build/Release/better_sqlite3.node"
+      },
+      {
+        "from": "resources/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -77,6 +84,10 @@
       "category": "public.app-category.video",
       "icon": "resources/icon.png",
       "hardenedRuntime": true,
+      "binaries": [
+        "Contents/Resources/ffmpeg/bin/ffmpeg",
+        "Contents/Resources/ffmpeg/bin/ffprobe"
+      ],
       "target": [
         "dmg",
         "zip"
