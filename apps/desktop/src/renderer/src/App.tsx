@@ -24,6 +24,7 @@ import type {
   RevisionRecord,
   RevisionProposalRecord,
   RevisionDiff,
+  StorageReport,
   Task,
   TakeRecord,
   EvaluationRecord,
@@ -51,6 +52,18 @@ function artifactUrl(uri: string): string | undefined {
   return match?.[1] ? `openmovie-artifact://sha256/${match[1]}` : undefined;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = -1;
+  do {
+    value /= 1024;
+    unit += 1;
+  } while (value >= 1024 && unit < units.length - 1);
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
 export function App(): React.JSX.Element {
   const initialized = useRef(false);
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' });
@@ -75,6 +88,7 @@ export function App(): React.JSX.Element {
   const [analysesByTake, setAnalysesByTake] = useState<Record<string, AnalysisRecord[]>>({});
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
   const [doctorReport, setDoctorReport] = useState<DoctorReport | null>(null);
+  const [storageReport, setStorageReport] = useState<StorageReport | null>(null);
   const [section, setSection] = useState<ProjectSection>('Overview');
   const [showCreate, setShowCreate] = useState(false);
   const [showTask, setShowTask] = useState(false);
@@ -211,6 +225,7 @@ export function App(): React.JSX.Element {
       nextTimelineRenders,
       nextProviders,
       nextProposals,
+      nextStorageReport,
     ] = await Promise.all([
       window.openMovie.listRevisions(),
       window.openMovie.listTasks(),
@@ -224,6 +239,7 @@ export function App(): React.JSX.Element {
       window.openMovie.listTimelineRenders(),
       window.openMovie.listProviders(),
       window.openMovie.listProposals(),
+      window.openMovie.getStorageReport(),
     ]);
     setRevisions(nextRevisions);
     setBranches(nextBranches);
@@ -264,6 +280,7 @@ export function App(): React.JSX.Element {
     setTimelineRenders(nextTimelineRenders);
     setProviders(nextProviders);
     setProposals(nextProposals);
+    setStorageReport(nextStorageReport);
     setStoryPremise(nextStory.brief.premise);
     setStoryThemes(nextStory.bible.themes.join(', '));
     setStoryWorld(nextStory.bible.world);
@@ -308,6 +325,10 @@ export function App(): React.JSX.Element {
 
   const restoreRevision = (revisionId: string): void => {
     void run(async () => loadProject(await window.openMovie.restoreRevision(revisionId)));
+  };
+
+  const cleanProjectCache = (): void => {
+    void run(async () => setStorageReport(await window.openMovie.cleanProjectCache()));
   };
 
   const inspectRevision = (revisionId: string): void => {
@@ -639,6 +660,33 @@ export function App(): React.JSX.Element {
                     <button className="secondary" disabled={busy} onClick={cancelTask}>
                       Cancel task
                     </button>
+                  )}
+                  {storageReport && (
+                    <div className="storage-panel" aria-live="polite">
+                      <div>
+                        <strong>Project storage</strong>
+                        <span>
+                          {formatBytes(storageReport.totalBytes)} used ·{' '}
+                          {formatBytes(storageReport.disk.freeBytes)} free on disk
+                        </span>
+                      </div>
+                      <div className="storage-categories">
+                        <span>Media {formatBytes(storageReport.categories.objects)}</span>
+                        <span>Sources {formatBytes(storageReport.categories.sources)}</span>
+                        <span>Runtime {formatBytes(storageReport.categories.database)}</span>
+                        <span>Cache {formatBytes(storageReport.reclaimableBytes)}</span>
+                      </div>
+                      {storageReport.disk.lowSpace && (
+                        <em>Disk space is low. Clear rebuildable cache or move the project.</em>
+                      )}
+                      <button
+                        className="secondary compact"
+                        disabled={busy || storageReport.reclaimableBytes === 0}
+                        onClick={cleanProjectCache}
+                      >
+                        Clear rebuildable cache
+                      </button>
+                    </div>
                   )}
                   {proposals.filter((proposal) => proposal.status === 'pending').length > 0 && (
                     <div className="proposal-list">

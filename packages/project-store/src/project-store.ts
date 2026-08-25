@@ -26,6 +26,7 @@ import { MovieWorkspace } from './movie-workspace.js';
 import { ObjectStore } from './object-store.js';
 import { ProposalRepository } from './proposal-repository.js';
 import { RevisionEngine } from './revision.js';
+import { StorageManager } from './storage-manager.js';
 import { SqliteTaskPersistence } from './task-persistence.js';
 
 function digest(content: string): string {
@@ -52,6 +53,7 @@ export class ProjectStore {
   readonly doctor: ProjectDoctor;
   readonly feedback: FeedbackRepository;
   readonly proposals: ProposalRepository;
+  readonly storage: StorageManager;
 
   private closed = false;
 
@@ -71,6 +73,7 @@ export class ProjectStore {
     this.doctor = new ProjectDoctor(root, manifest, database, this.objects, this.revisions);
     this.feedback = new FeedbackRepository(database, this.movies);
     this.proposals = new ProposalRepository(database, this.movies, this.revisions, this.feedback);
+    this.storage = new StorageManager(root, this.metadataRoot);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {

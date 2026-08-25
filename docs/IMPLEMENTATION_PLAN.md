@@ -355,7 +355,7 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 - [x] Windows 签名 CI 接线及 Tag fail-closed 门禁。
 - [x] Crash Recovery。
 - [x] Project Backup/Repair。
-- 磁盘与 Cache 管理。
+- [x] 磁盘与 Cache 管理。
 - 性能基线。
 - Accessibility。
 - 国际化基础。

@@ -18,6 +18,7 @@ import {
   revisionRecordSchema,
   revisionDiffSchema,
   revisionProposalRecordSchema,
+  storageReportSchema,
   taskSchema,
   taskEventSchema,
   takeRecordSchema,
@@ -261,6 +262,19 @@ void app
     ipcMain.handle('openmovie:project-doctor', async (_event, deep: unknown) =>
       doctorReportSchema.parse(
         await core?.request({ method: 'project.doctor', params: { deep: deep === true } }),
+      ),
+    );
+    ipcMain.handle('openmovie:project-storage-report', async () =>
+      storageReportSchema.parse(
+        await core?.request({ method: 'project.storage_report', params: {} }),
+      ),
+    );
+    ipcMain.handle('openmovie:project-storage-clean', async () =>
+      storageReportSchema.parse(
+        await core?.request({
+          method: 'project.storage_clean',
+          params: { categories: ['cache', 'previews', 'temp'] },
+        }),
       ),
     );
     ipcMain.handle('openmovie:project-rename', async (_event, title: unknown) => {

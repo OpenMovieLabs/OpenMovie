@@ -64,6 +64,18 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('project.storage_report'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('project.storage_clean'),
+    params: z.object({
+      categories: z.array(z.enum(['cache', 'previews', 'temp'])).min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('revision.commit'),
     params: z.object({
       expectedRevisionId: z.string().nullable(),
@@ -487,6 +499,25 @@ export const doctorReportSchema = z.object({
   issues: z.array(doctorIssueSchema),
 });
 
+export const storageReportSchema = z.object({
+  measuredAt: z.string().datetime(),
+  totalBytes: z.number().int().nonnegative(),
+  reclaimableBytes: z.number().int().nonnegative(),
+  categories: z.object({
+    objects: z.number().int().nonnegative(),
+    cache: z.number().int().nonnegative(),
+    previews: z.number().int().nonnegative(),
+    temp: z.number().int().nonnegative(),
+    database: z.number().int().nonnegative(),
+    sources: z.number().int().nonnegative(),
+  }),
+  disk: z.object({
+    totalBytes: z.number().int().nonnegative(),
+    freeBytes: z.number().int().nonnegative(),
+    lowSpace: z.boolean(),
+  }),
+});
+
 export const takeRecordSchema = z.object({
   id: z.string(),
   shotId: z.string(),
@@ -640,6 +671,7 @@ export type FileDiff = z.infer<typeof fileDiffSchema>;
 export type RevisionDiff = z.infer<typeof revisionDiffSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
 export type DoctorReport = z.infer<typeof doctorReportSchema>;
+export type StorageReport = z.infer<typeof storageReportSchema>;
 export type TakeRecord = z.infer<typeof takeRecordSchema>;
 export type EvaluationRecord = z.infer<typeof evaluationRecordSchema>;
 export type FeedbackRecord = z.infer<typeof feedbackRecordSchema>;

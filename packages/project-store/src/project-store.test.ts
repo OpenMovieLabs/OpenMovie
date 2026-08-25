@@ -66,6 +66,25 @@ describe('ProjectStore', () => {
     await project.close();
   });
 
+  it('reports storage and only clears rebuildable project data', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-storage-'));
+    const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Storage' });
+    const object = await project.objects.importBytes(Buffer.from('permanent media'), 'take.bin');
+    await writeFile(join(project.metadataRoot, 'cache', 'render.tmp'), Buffer.alloc(100));
+    await writeFile(join(project.metadataRoot, 'previews', 'thumbnail.tmp'), Buffer.alloc(50));
+    await writeFile(join(project.metadataRoot, 'temp', 'download.tmp'), Buffer.alloc(25));
+
+    const before = await project.storage.report();
+    expect(before.categories.objects).toBeGreaterThanOrEqual(15);
+    expect(before.reclaimableBytes).toBe(175);
+    expect(before.disk.freeBytes).toBeGreaterThan(0);
+
+    const after = await project.storage.clean(['cache', 'previews', 'temp']);
+    expect(after.reclaimableBytes).toBe(0);
+    expect(await readFile(object.path, 'utf8')).toBe('permanent media');
+    await project.close();
+  });
+
   it('commits and restores revisions with optimistic concurrency', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'openmovie-revision-'));
     const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Original' });

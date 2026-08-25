@@ -9,4 +9,5 @@ export * from './movie-workspace.js';
 export * from './object-store.js';
 export * from './project-store.js';
 export * from './revision.js';
+export * from './storage-manager.js';
 export * from './task-persistence.js';

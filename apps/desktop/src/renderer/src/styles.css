@@ -367,6 +367,35 @@ h1 {
   color: #85827b;
   line-height: 1.55;
 }
+
+.storage-panel {
+  width: min(100%, 560px);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  text-align: left;
+}
+
+.storage-panel > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.storage-panel span,
+.storage-panel em {
+  color: #9b998f;
+  font-size: 12px;
+}
+
+.storage-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
 .task-steps {
   display: grid;
   width: min(460px, 100%);

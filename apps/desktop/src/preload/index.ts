@@ -7,6 +7,7 @@ import type {
   HarnessHealth,
   InitializeResult,
   ProjectSummary,
+  StorageReport,
   RevisionRecord,
   RevisionProposalRecord,
   RevisionDiff,
@@ -42,6 +43,8 @@ export type OpenMovieDesktopApi = {
   listRecentProjects: () => Promise<RecentProject[]>;
   getProjectSummary: () => Promise<ProjectSummary>;
   runDoctor: (deep?: boolean) => Promise<DoctorReport>;
+  getStorageReport: () => Promise<StorageReport>;
+  cleanProjectCache: () => Promise<StorageReport>;
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
@@ -210,6 +213,10 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:project-summary') as Promise<ProjectSummary>,
   runDoctor: (deep) =>
     ipcRenderer.invoke('openmovie:project-doctor', deep) as Promise<DoctorReport>,
+  getStorageReport: () =>
+    ipcRenderer.invoke('openmovie:project-storage-report') as Promise<StorageReport>,
+  cleanProjectCache: () =>
+    ipcRenderer.invoke('openmovie:project-storage-clean') as Promise<StorageReport>,
   renameProject: (title) =>
     ipcRenderer.invoke('openmovie:project-rename', title) as Promise<ProjectSummary>,
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,

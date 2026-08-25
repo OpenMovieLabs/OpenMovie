@@ -1449,6 +1449,9 @@ interface PublicError {
 - 异步视频 Job 在应用重启后的轮询恢复和产物收集。
 - 文件外部修改与冲突。
 - Object Store 去重和垃圾回收。
+- Desktop 对 Object Store、源文件、SQLite 与可重建 Cache 分类计量；只允许用户清理
+  `.openmovie/cache`、`.openmovie/previews` 和 `.openmovie/temp`。运行中 Task 会阻止清理，
+  不可变 Object Store 不进入这一清理动作。
 - Schema 升级和备份恢复。
 
 ### 22.4 Desktop E2E

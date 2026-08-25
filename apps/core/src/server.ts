@@ -449,6 +449,7 @@ export class CoreServer {
               'project.create',
               'project.open',
               'project.doctor',
+              'project.storage',
               'revision.commit',
               'revision.branch',
               'movie.entity',
@@ -519,6 +520,25 @@ export class CoreServer {
           ok: true,
           result: await this.requireProject().doctor.run({ deep: command.params.deep }),
         };
+      case 'project.storage_report':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().storage.report(),
+        };
+      case 'project.storage_clean': {
+        const activeTasks = this.tasks
+          .list()
+          .filter((task) => ['queued', 'planning', 'running'].includes(task.status));
+        if (activeTasks.length > 0) {
+          throw new Error('Cannot clean project cache while tasks are running');
+        }
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().storage.clean(command.params.categories),
+        };
+      }
       case 'revision.commit': {
         const project = this.requireProject();
         const revision = await project.revisions.commit(command.params);

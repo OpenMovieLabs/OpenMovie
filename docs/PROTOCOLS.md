@@ -528,6 +528,14 @@ response.failed
 
 流式 arguments 在 completed 前不可执行。
 
+### 19.1 Project storage
+
+`project.storage_report` 返回项目源文件、SQLite、不可变 Object Store、Cache、Preview 和 Temp
+的分类字节数，以及项目所在文件系统的容量、可用空间与低空间状态。
+
+`project.storage_clean` 只接受 `cache`、`previews`、`temp` 类别。Core 在 Task 运行时拒绝清理；
+该动作不接受任意路径，也不会删除 Object Store、Movie IR、Revision 或运行数据库。
+
 ## 20. Media Job
 
 ```typescript

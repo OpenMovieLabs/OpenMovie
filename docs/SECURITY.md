@@ -330,6 +330,10 @@ Plugin Manifest 声明：
 
 ## 19. Object Store
 
+Desktop 的存储清理 IPC 不接收 Renderer 提供的文件路径，只映射到当前工程固定的
+`.openmovie/cache`、`.openmovie/previews` 与 `.openmovie/temp`。Core 在存在运行中 Task 时拒绝
+清理，并且不可变 Object Store 永远不属于“清理缓存”操作。
+
 - 文件名来自内容哈希，不来自用户输入。
 - 写入临时文件后验证并原子移动。
 - 读取验证数据库引用和 Project Scope。
