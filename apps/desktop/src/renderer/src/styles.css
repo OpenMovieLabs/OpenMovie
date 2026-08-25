@@ -643,6 +643,9 @@ h1 {
   border-radius: 5px;
   background: #10100f;
 }
+.feedback-compose .timecode-input {
+  flex: 0 0 72px;
+}
 .analysis-result {
   display: grid;
   gap: 4px;

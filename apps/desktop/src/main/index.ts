@@ -714,7 +714,13 @@ void app
     );
     ipcMain.handle(
       'openmovie:feedback-create',
-      async (_event, targetType: unknown, targetId: unknown, body: unknown) => {
+      async (
+        _event,
+        targetType: unknown,
+        targetId: unknown,
+        body: unknown,
+        timeRangeUs: unknown,
+      ) => {
         if (
           !['project', 'scene', 'shot', 'take', 'revision'].includes(String(targetType)) ||
           typeof targetId !== 'string' ||
@@ -722,6 +728,13 @@ void app
           !body.trim()
         ) {
           throw new Error('Invalid Feedback input');
+        }
+        const parsedRange =
+          timeRangeUs === undefined
+            ? undefined
+            : feedbackRecordSchema.shape.timeRangeUs.unwrap().parse(timeRangeUs);
+        if (parsedRange && parsedRange.endUs <= parsedRange.startUs) {
+          throw new Error('Invalid Feedback time range');
         }
         return feedbackRecordSchema.parse(
           await core?.request({
@@ -731,6 +744,7 @@ void app
               targetId,
               body: body.trim(),
               authorId: 'user_local',
+              ...(parsedRange ? { timeRangeUs: parsedRange } : {}),
             },
           }),
         );

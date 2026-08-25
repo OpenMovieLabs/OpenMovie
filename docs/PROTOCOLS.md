@@ -536,6 +536,9 @@ response.failed
 `project.storage_clean` 只接受 `cache`、`previews`、`temp` 类别。Core 在 Task 运行时拒绝清理；
 该动作不接受任意路径，也不会删除 Object Store、Movie IR、Revision 或运行数据库。
 
+`feedback.create` 可选接收 `timeRangeUs: { startUs, endUs }`。两者必须是整数微秒、
+`startUs >= 0` 且 `endUs > startUs`；该范围采用半开区间 `[startUs, endUs)`。
+
 ## 20. Media Job
 
 ```typescript

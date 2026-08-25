@@ -265,9 +265,14 @@ describe('ProjectStore', () => {
       targetId: take.id,
       body: 'Increase the contrast around the subject',
       authorId: 'reviewer_local',
+      timeRangeUs: { startUs: 250_000, endUs: 750_000 },
     });
     expect(project.feedback.list({ targetType: 'take', targetId: take.id })).toMatchObject([
-      { id: feedback.id, status: 'open' },
+      {
+        id: feedback.id,
+        status: 'open',
+        timeRangeUs: { startUs: 250_000, endUs: 750_000 },
+      },
     ]);
     const selected = await project.media.selectTake({
       takeId: take.id,

@@ -1463,6 +1463,8 @@ interface PublicError {
   Findings。每个新 Take 与同 Shot 最近一次 Evaluation 比较状态、分数和新增 Finding Code；回归会
   产生 `REVISION_EVALUATION_REGRESSION`。角色一致性通过 `CharacterSimilarityPort` 保留可替换的
   本地或远程实现边界。
+- Feedback 可选绑定 `[start_us, end_us)`，Desktop 以秒输入但在 IPC 前转换为整数微秒。时间范围
+  会进入 Feedback → Task 的修复目标，并随 Proposal 的 `feedbackId` 关联到最终解决 Revision。
 - Schema 升级和备份恢复。
 
 ### 22.4 Desktop E2E

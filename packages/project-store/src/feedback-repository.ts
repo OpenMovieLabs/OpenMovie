@@ -13,6 +13,7 @@ export type FeedbackRecord = {
   status: 'open' | 'resolved';
   authorId: string;
   resolutionRevisionId?: string;
+  timeRangeUs?: { startUs: number; endUs: number };
   createdAt: string;
   updatedAt: string;
 };
@@ -28,10 +29,20 @@ export class FeedbackRepository {
     targetId: string;
     body: string;
     authorId: string;
+    timeRangeUs?: { startUs: number; endUs: number };
   }): Promise<FeedbackRecord> {
     await this.assertTarget(input.targetType, input.targetId);
     const body = input.body.trim();
     if (!body) throw new Error('Feedback body is required');
+    if (
+      input.timeRangeUs &&
+      (!Number.isSafeInteger(input.timeRangeUs.startUs) ||
+        !Number.isSafeInteger(input.timeRangeUs.endUs) ||
+        input.timeRangeUs.startUs < 0 ||
+        input.timeRangeUs.endUs <= input.timeRangeUs.startUs)
+    ) {
+      throw new Error('Feedback time range is invalid');
+    }
     const now = new Date().toISOString();
     const record: FeedbackRecord = {
       id: createId('feedback'),
@@ -40,14 +51,15 @@ export class FeedbackRepository {
       body,
       status: 'open',
       authorId: input.authorId,
+      ...(input.timeRangeUs ? { timeRangeUs: input.timeRangeUs } : {}),
       createdAt: now,
       updatedAt: now,
     };
     this.database
       .prepare(
         `INSERT INTO feedback(
-          id, target_type, target_id, body, status, author_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, target_type, target_id, body, status, author_id, start_us, end_us, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -56,6 +68,8 @@ export class FeedbackRepository {
         record.body,
         record.status,
         record.authorId,
+        record.timeRangeUs?.startUs ?? null,
+        record.timeRangeUs?.endUs ?? null,
         now,
         now,
       );
@@ -87,7 +101,7 @@ export class FeedbackRepository {
     const rows = this.database
       .prepare(
         `SELECT id, target_type, target_id, body, status, author_id,
-          resolution_revision_id, created_at, updated_at
+          resolution_revision_id, start_us, end_us, created_at, updated_at
          FROM feedback ${where} ORDER BY created_at DESC`,
       )
       .all(...parameters) as Array<{
@@ -98,6 +112,8 @@ export class FeedbackRepository {
       status: FeedbackRecord['status'];
       author_id: string;
       resolution_revision_id: string | null;
+      start_us: number | null;
+      end_us: number | null;
       created_at: string;
       updated_at: string;
     }>;
@@ -109,6 +125,9 @@ export class FeedbackRepository {
       status: row.status,
       authorId: row.author_id,
       ...(row.resolution_revision_id ? { resolutionRevisionId: row.resolution_revision_id } : {}),
+      ...(row.start_us !== null && row.end_us !== null
+        ? { timeRangeUs: { startUs: row.start_us, endUs: row.end_us } }
+        : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));

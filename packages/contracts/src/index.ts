@@ -254,6 +254,13 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
       targetId: z.string().min(1),
       body: z.string().trim().min(1).max(10_000),
       authorId: z.string().min(1),
+      timeRangeUs: z
+        .object({
+          startUs: z.number().int().nonnegative(),
+          endUs: z.number().int().positive(),
+        })
+        .refine((range) => range.endUs > range.startUs, 'End must be after start')
+        .optional(),
     }),
   }),
   z.object({
@@ -555,6 +562,9 @@ export const feedbackRecordSchema = z.object({
   status: z.enum(['open', 'resolved']),
   authorId: z.string(),
   resolutionRevisionId: z.string().optional(),
+  timeRangeUs: z
+    .object({ startUs: z.number().int().nonnegative(), endUs: z.number().int().positive() })
+    .optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

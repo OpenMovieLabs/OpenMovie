@@ -219,6 +219,13 @@ const migrations = [
         ON revision_proposals(status, created_at DESC);
     `,
   },
+  {
+    version: 9,
+    sql: `
+      ALTER TABLE feedback ADD COLUMN start_us INTEGER;
+      ALTER TABLE feedback ADD COLUMN end_us INTEGER;
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

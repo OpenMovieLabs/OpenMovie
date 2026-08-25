@@ -87,6 +87,9 @@ export function App(): React.JSX.Element {
   const [feedbackByTake, setFeedbackByTake] = useState<Record<string, FeedbackRecord[]>>({});
   const [analysesByTake, setAnalysesByTake] = useState<Record<string, AnalysisRecord[]>>({});
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
+  const [feedbackRangeDrafts, setFeedbackRangeDrafts] = useState<
+    Record<string, { start: string; end: string }>
+  >({});
   const [doctorReport, setDoctorReport] = useState<DoctorReport | null>(null);
   const [storageReport, setStorageReport] = useState<StorageReport | null>(null);
   const [section, setSection] = useState<ProjectSection>('Overview');
@@ -457,8 +460,34 @@ export function App(): React.JSX.Element {
     const body = feedbackDrafts[takeId]?.trim();
     if (!body) return;
     void run(async () => {
-      await window.openMovie.createFeedback('take', takeId, body);
+      const range = feedbackRangeDrafts[takeId];
+      const hasRange = Boolean(range?.start || range?.end);
+      const startSeconds = Number(range?.start);
+      const endSeconds = Number(range?.end);
+      if (
+        hasRange &&
+        (!range?.start ||
+          !range.end ||
+          !Number.isFinite(startSeconds) ||
+          !Number.isFinite(endSeconds) ||
+          startSeconds < 0 ||
+          endSeconds <= startSeconds)
+      ) {
+        throw new Error('Feedback timecode must have an end after its non-negative start');
+      }
+      await window.openMovie.createFeedback(
+        'take',
+        takeId,
+        body,
+        hasRange
+          ? {
+              startUs: Math.round(startSeconds * 1_000_000),
+              endUs: Math.round(endSeconds * 1_000_000),
+            }
+          : undefined,
+      );
       setFeedbackDrafts((current) => ({ ...current, [takeId]: '' }));
+      setFeedbackRangeDrafts((current) => ({ ...current, [takeId]: { start: '', end: '' } }));
       const next = await window.openMovie.listFeedback('take', takeId, 'open');
       setFeedbackByTake((current) => ({
         ...current,
@@ -478,7 +507,10 @@ export function App(): React.JSX.Element {
   const fixFeedback = (feedback: FeedbackRecord, shot: Shot, take: TakeRecord): void => {
     void run(async () => {
       setProviders(await window.openMovie.listProviders());
-      setGoal(`Fix this feedback for ${shot.id}: ${feedback.body}`);
+      const timecode = feedback.timeRangeUs
+        ? ` from ${(feedback.timeRangeUs.startUs / 1_000_000).toFixed(3)}s to ${(feedback.timeRangeUs.endUs / 1_000_000).toFixed(3)}s`
+        : '';
+      setGoal(`Fix this feedback for ${shot.id}${timecode}: ${feedback.body}`);
       setTaskShotId(shot.id);
       setTaskMediaKind(take.artifact.mimeType.startsWith('video/') ? 'video' : 'image');
       setMediaProviderId('fake');
@@ -1020,7 +1052,15 @@ export function App(): React.JSX.Element {
                                 </button>
                                 {(feedbackByTake[take.id] ?? []).map((feedback) => (
                                   <div className="feedback-row" key={feedback.id}>
-                                    <span>{feedback.body}</span>
+                                    <span>
+                                      {feedback.timeRangeUs && (
+                                        <code>
+                                          {(feedback.timeRangeUs.startUs / 1_000_000).toFixed(2)}–
+                                          {(feedback.timeRangeUs.endUs / 1_000_000).toFixed(2)}s
+                                        </code>
+                                      )}{' '}
+                                      {feedback.body}
+                                    </span>
                                     <button onClick={() => fixFeedback(feedback, shot, take)}>
                                       Fix with AI
                                     </button>
@@ -1034,6 +1074,42 @@ export function App(): React.JSX.Element {
                                       setFeedbackDrafts((current) => ({
                                         ...current,
                                         [take.id]: event.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <input
+                                    className="timecode-input"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    aria-label="Feedback start time in seconds"
+                                    placeholder="Start s"
+                                    value={feedbackRangeDrafts[take.id]?.start ?? ''}
+                                    onChange={(event) =>
+                                      setFeedbackRangeDrafts((current) => ({
+                                        ...current,
+                                        [take.id]: {
+                                          start: event.target.value,
+                                          end: current[take.id]?.end ?? '',
+                                        },
+                                      }))
+                                    }
+                                  />
+                                  <input
+                                    className="timecode-input"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    aria-label="Feedback end time in seconds"
+                                    placeholder="End s"
+                                    value={feedbackRangeDrafts[take.id]?.end ?? ''}
+                                    onChange={(event) =>
+                                      setFeedbackRangeDrafts((current) => ({
+                                        ...current,
+                                        [take.id]: {
+                                          start: current[take.id]?.start ?? '',
+                                          end: event.target.value,
+                                        },
                                       }))
                                     }
                                   />

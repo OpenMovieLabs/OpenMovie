@@ -331,13 +331,13 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 
 ### 9.5 Feedback Loop
 
-- Preview 时间码 Feedback。
-- Feedback → Task。
-- Agent Patch。
-- 局部 Build。
-- Evaluation。
-- Before/After。
-- Accept/Reject。
+- [x] Preview 时间码 Feedback。
+- [x] Feedback → Task。
+- [x] Agent Patch。
+- [x] 局部 Build。
+- [x] Evaluation。
+- [x] Before/After。
+- [x] Accept/Reject。
 
 ### 9.6 Exit Criteria
 

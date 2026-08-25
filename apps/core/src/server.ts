@@ -784,7 +784,13 @@ export class CoreServer {
         return {
           id: command.id,
           ok: true,
-          result: await this.requireProject().feedback.create(command.params),
+          result: await this.requireProject().feedback.create({
+            targetType: command.params.targetType,
+            targetId: command.params.targetId,
+            body: command.params.body,
+            authorId: command.params.authorId,
+            ...(command.params.timeRangeUs ? { timeRangeUs: command.params.timeRangeUs } : {}),
+          }),
         };
       case 'feedback.list':
         return {

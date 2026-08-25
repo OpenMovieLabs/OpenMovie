@@ -402,6 +402,9 @@ schema_migrations
 
 当 `.openmovie/state.sqlite` 完全缺失且目录中存在可验证的 Movie IR 时，Core 自动创建迁移后的空数据库，把当前 YAML 全树捕获为 `Recover runtime state from Movie IR` Revision，并恢复 `main` 分支。该路径保证 Story/Scene/Shot/Timeline 可重新打开，但不能从 YAML 推导已经丢失的 Task、Take Provenance、Feedback 或历史 Revision；完整恢复必须使用包含原数据库和 Object Store 的导出备份。
 
+Feedback 的运行时记录可选保存 `start_us` / `end_us` 半开时间区间，用于把审阅意见定位到
+Take 的精确片段。它属于 SQLite 运行历史；导出备份会保留，只有 YAML 恢复时无法重建。
+
 具体 DDL 由首次实现迁移生成，但必须遵守：
 
 - 外键开启。

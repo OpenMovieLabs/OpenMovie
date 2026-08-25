@@ -80,6 +80,7 @@ export type OpenMovieDesktopApi = {
     targetType: FeedbackRecord['targetType'],
     targetId: string,
     body: string,
+    timeRangeUs?: { startUs: number; endUs: number },
   ) => Promise<FeedbackRecord>;
   listAnalyses: (takeId: string) => Promise<AnalysisRecord[]>;
   analyzeTake: (takeId: string, providerId: string, prompt: string) => Promise<Task>;
@@ -262,12 +263,13 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:feedback-list', targetType, targetId, status) as Promise<
       FeedbackRecord[]
     >,
-  createFeedback: (targetType, targetId, body) =>
+  createFeedback: (targetType, targetId, body, timeRangeUs) =>
     ipcRenderer.invoke(
       'openmovie:feedback-create',
       targetType,
       targetId,
       body,
+      timeRangeUs,
     ) as Promise<FeedbackRecord>,
   listAnalyses: (takeId) =>
     ipcRenderer.invoke('openmovie:analysis-list', takeId) as Promise<AnalysisRecord[]>,
