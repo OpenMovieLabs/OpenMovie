@@ -6,10 +6,12 @@ import {
   PROTOCOL_VERSION,
   branchRecordSchema,
   coreHealthSchema,
+  fileDiffSchema,
   harnessHealthSchema,
   initializeResultSchema,
   projectSummarySchema,
   revisionRecordSchema,
+  revisionDiffSchema,
   taskSchema,
   taskEventSchema,
 } from '@openmovie/contracts';
@@ -205,6 +207,17 @@ void app
         await core?.request({ method: 'project.get_summary', params: {} }),
       );
     });
+    ipcMain.handle('openmovie:revision-diff', async (_event, revisionId: unknown) => {
+      if (typeof revisionId !== 'string') throw new Error('Revision ID is required');
+      return revisionDiffSchema.parse(
+        await core?.request({ method: 'revision.diff', params: { revisionId } }),
+      );
+    });
+    ipcMain.handle('openmovie:working-changes', async () =>
+      fileDiffSchema
+        .array()
+        .parse(await core?.request({ method: 'revision.working_changes', params: {} })),
+    );
     ipcMain.handle('openmovie:branch-list', async () =>
       branchRecordSchema
         .array()
@@ -321,7 +334,10 @@ void app
           throw new Error('Task goal is required');
         let providerId = 'fake';
         let model = 'fake-text-v1';
-        if (typeof plannerProviderId === 'string' && plannerProviderId !== 'fake') {
+        if (plannerProviderId === 'harness:codex') {
+          providerId = 'harness:codex';
+          model = 'codex-local';
+        } else if (typeof plannerProviderId === 'string' && plannerProviderId !== 'fake') {
           if (!secrets) throw new Error('Secret Store is unavailable');
           const profile = secrets
             .listProviderProfiles()

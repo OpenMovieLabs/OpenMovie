@@ -23,4 +23,21 @@ describe('JsonLineRpcPeer', () => {
     expect(notifications).toEqual(['turn/completed']);
     peer.close();
   });
+
+  it('answers server-initiated requests without confusing response correlation', async () => {
+    const serverToClient = new PassThrough();
+    const clientToServer = new PassThrough();
+    const peer = new JsonLineRpcPeer(serverToClient, clientToServer);
+    peer.onRequest((method) =>
+      Promise.resolve({ decision: method.includes('Approval') ? 'decline' : 'cancel' }),
+    );
+    const response = new Promise<string>((resolve) =>
+      clientToServer.once('data', (data: Buffer) => resolve(data.toString())),
+    );
+    serverToClient.write(
+      `${JSON.stringify({ id: 9, method: 'item/fileChange/requestApproval', params: {} })}\n`,
+    );
+    expect(JSON.parse(await response)).toEqual({ id: 9, result: { decision: 'decline' } });
+    peer.close();
+  });
 });

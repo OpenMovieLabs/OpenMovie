@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { TaskEngine } from '@openmovie/task-engine';
+import { stringifyYaml } from '@openmovie/movie-ir';
 
 import { ProjectStore, ProjectStoreError } from './index.js';
 
@@ -114,6 +115,25 @@ describe('ProjectStore', () => {
     const scene = await project.movies.read('scene', sceneResult.entity.id);
     expect(scene.type === 'scene' && scene.shots).toContain(shotResult.entity.id);
     expect(project.revisions.list()[0]?.manifestHash).toHaveLength(64);
+    const diff = project.revisions.diff(shotResult.revision.id);
+    expect(diff.files.find((file) => file.path.startsWith('shots/'))?.status).toBe('added');
+    expect(
+      diff.files
+        .find((file) => file.path.startsWith('scenes/'))
+        ?.changes.some((change) => change.pointer === '/shots/0'),
+    ).toBe(true);
+
+    if (scene.type !== 'scene') throw new Error('Expected a scene');
+    await writeFile(
+      join(project.root, 'scenes', `${scene.id}.yaml`),
+      stringifyYaml({ ...scene, title: 'Externally edited title' }),
+    );
+    const working = await project.revisions.workingChanges();
+    expect(
+      working
+        .find((file) => file.path === `scenes/${scene.id}.yaml`)
+        ?.changes.some((change) => change.pointer === '/title'),
+    ).toBe(true);
     await project.close();
   });
 

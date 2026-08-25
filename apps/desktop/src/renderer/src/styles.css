@@ -467,10 +467,15 @@ h1 {
   border: 2px solid #dba155;
   border-radius: 99px;
 }
-.revision-row strong {
+.revision-row strong,
+.revision-title {
   display: block;
   color: #d6d2c8;
   font-size: 13px;
+}
+.revision-title {
+  padding: 0;
+  text-align: left;
 }
 .revision-row span {
   display: flex;
@@ -486,6 +491,51 @@ h1 {
   border: 0;
   font-size: 11px;
   cursor: pointer;
+}
+.working-changes {
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  color: #deb075;
+  background: rgba(222, 176, 117, 0.07);
+  border: 1px solid rgba(222, 176, 117, 0.16);
+  border-radius: 7px;
+  font-size: 11px;
+}
+.diff-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.diff-panel > strong {
+  color: #c8c3b9;
+  font-size: 12px;
+}
+.diff-file {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 8px;
+  margin-top: 10px;
+}
+.diff-file > span {
+  color: #d1a269;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.diff-file > span[data-status='added'] {
+  color: #82b98a;
+}
+.diff-file > span[data-status='deleted'] {
+  color: #d9897f;
+}
+.diff-file code {
+  color: #aaa69d;
+  font-size: 10px;
+}
+.diff-file small {
+  grid-column: 2;
+  color: #65635e;
+  font-size: 9px;
+  line-height: 1.4;
 }
 .modal-backdrop {
   position: fixed;

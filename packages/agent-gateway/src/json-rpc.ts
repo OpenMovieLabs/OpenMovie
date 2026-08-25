@@ -9,6 +9,7 @@ type RpcMessage = {
   result?: unknown;
   error?: { code: number; message: string };
 };
+type RequestHandler = (method: string, params: unknown) => Promise<unknown>;
 type Pending = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -19,6 +20,7 @@ export class JsonLineRpcPeer {
   private nextId = 0;
   private readonly pending = new Map<RpcId, Pending>();
   private readonly notificationListeners = new Set<(method: string, params: unknown) => void>();
+  private requestHandler: RequestHandler | undefined;
   private closed = false;
 
   constructor(
@@ -53,6 +55,10 @@ export class JsonLineRpcPeer {
     return () => this.notificationListeners.delete(listener);
   }
 
+  onRequest(handler: RequestHandler): void {
+    this.requestHandler = handler;
+  }
+
   close(error = new Error('JSON-RPC peer closed')): void {
     if (this.closed) return;
     this.closed = true;
@@ -82,6 +88,29 @@ export class JsonLineRpcPeer {
       if (message.error)
         pending.reject(new Error(`JSON-RPC ${message.error.code}: ${message.error.message}`));
       else pending.resolve(message.result);
+      return;
+    }
+    if (message.method && message.id !== undefined) {
+      const requestId = message.id;
+      const handler = this.requestHandler;
+      if (!handler) {
+        this.send({
+          id: requestId,
+          error: { code: -32_601, message: `Unsupported server request: ${message.method}` },
+        });
+        return;
+      }
+      void handler(message.method, message.params).then(
+        (result) => this.send({ id: requestId, result }),
+        (error: unknown) =>
+          this.send({
+            id: requestId,
+            error: {
+              code: -32_603,
+              message: error instanceof Error ? error.message : String(error),
+            },
+          }),
+      );
       return;
     }
     if (message.method && message.id === undefined) {

@@ -17,6 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
+    "mcp": "pnpm --filter @openmovie/mcp-server dev --",
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke:desktop": "node scripts/smoke-desktop.mjs",

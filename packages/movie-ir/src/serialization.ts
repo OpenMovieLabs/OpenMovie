@@ -17,8 +17,12 @@ export function createId(prefix: string): string {
 }
 
 export function parseYaml<T>(source: string, schema: z.ZodType<T>): T {
-  const value: unknown = parse(source, { schema: 'core' });
+  const value = parseYamlDocument(source);
   return schema.parse(value);
+}
+
+export function parseYamlDocument(source: string): unknown {
+  return parse(source, { schema: 'core' }) as unknown;
 }
 
 export function stringifyYaml(value: unknown): string {

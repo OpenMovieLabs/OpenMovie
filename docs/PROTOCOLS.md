@@ -358,6 +358,19 @@ interface ToolDefinition {
 
 Tool 名称采用 namespace.action，例如 shot.get、shot.propose_patch。
 
+### 13.1 已实现 Tool Surface
+
+独立 MCP stdio Server 与 Desktop 内 Codex Dynamic Tools 复用相同 Project Store 语义。当前实现：
+
+- project_summary / openmovie_project_summary
+- entity_list / openmovie_entity_list
+- revision_list、revision_diff、working_changes
+- scene_create / openmovie_scene_create
+- shot_create / openmovie_shot_create
+- branch_list、branch_create、branch_switch
+
+所有创建命令要求 expectedRevisionId，写入形成完整 Movie IR 文件树 Revision。Desktop 内 Dynamic Tool 由当前 Core 直接执行；独立 MCP Server 获取项目写锁，因此不会与 Desktop 形成双写入口。
+
 ## 14. Tool Call
 
 ```typescript

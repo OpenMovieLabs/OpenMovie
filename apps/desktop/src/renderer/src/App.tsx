@@ -14,10 +14,12 @@ import {
 import type {
   BranchRecord,
   CoreHealth,
+  FileDiff,
   HarnessHealth,
   InitializeResult,
   ProjectSummary,
   RevisionRecord,
+  RevisionDiff,
   Task,
 } from '@openmovie/contracts';
 import type { Character, Scene, Shot } from '@openmovie/movie-ir';
@@ -37,6 +39,8 @@ export function App(): React.JSX.Element {
   const [harnesses, setHarnesses] = useState<HarnessHealth[]>([]);
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
+  const [workingChanges, setWorkingChanges] = useState<FileDiff[]>([]);
+  const [selectedDiff, setSelectedDiff] = useState<RevisionDiff | null>(null);
   const [branches, setBranches] = useState<BranchRecord[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -107,15 +111,23 @@ export function App(): React.JSX.Element {
   const loadProject = async (summary: ProjectSummary): Promise<void> => {
     setProject(summary);
     setTitle(summary.title);
-    const [nextRevisions, tasks, nextBranches, nextCharacters, nextScenes, nextShots] =
-      await Promise.all([
-        window.openMovie.listRevisions(),
-        window.openMovie.listTasks(),
-        window.openMovie.listBranches(),
-        window.openMovie.listEntities('character'),
-        window.openMovie.listEntities('scene'),
-        window.openMovie.listEntities('shot'),
-      ]);
+    const [
+      nextRevisions,
+      tasks,
+      nextBranches,
+      nextCharacters,
+      nextScenes,
+      nextShots,
+      nextWorkingChanges,
+    ] = await Promise.all([
+      window.openMovie.listRevisions(),
+      window.openMovie.listTasks(),
+      window.openMovie.listBranches(),
+      window.openMovie.listEntities('character'),
+      window.openMovie.listEntities('scene'),
+      window.openMovie.listEntities('shot'),
+      window.openMovie.getWorkingChanges(),
+    ]);
     setRevisions(nextRevisions);
     setBranches(nextBranches);
     setCharacters(
@@ -123,6 +135,8 @@ export function App(): React.JSX.Element {
     );
     setScenes(nextScenes.filter((entity): entity is Scene => entity.type === 'scene'));
     setShots(nextShots.filter((entity): entity is Shot => entity.type === 'shot'));
+    setWorkingChanges(nextWorkingChanges);
+    setSelectedDiff(null);
     setShotSceneId((current) => current || (nextScenes[0]?.id ?? ''));
     setLastTask(tasks.at(-1) ?? null);
   };
@@ -150,6 +164,10 @@ export function App(): React.JSX.Element {
 
   const restoreRevision = (revisionId: string): void => {
     void run(async () => loadProject(await window.openMovie.restoreRevision(revisionId)));
+  };
+
+  const inspectRevision = (revisionId: string): void => {
+    void run(async () => setSelectedDiff(await window.openMovie.getRevisionDiff(revisionId)));
   };
 
   const createBranch = (): void => {
@@ -348,12 +366,23 @@ export function App(): React.JSX.Element {
                       Branch
                     </button>
                   </div>
+                  {workingChanges.length > 0 && (
+                    <div className="working-changes">
+                      {workingChanges.length} uncommitted Movie IR file
+                      {workingChanges.length === 1 ? '' : 's'}
+                    </div>
+                  )}
                   <div className="revision-list">
                     {revisions.map((revision) => (
                       <div className="revision-row" key={revision.id}>
                         <span className="revision-node" />
                         <div>
-                          <strong>{revision.message}</strong>
+                          <button
+                            className="revision-title"
+                            onClick={() => inspectRevision(revision.id)}
+                          >
+                            {revision.message}
+                          </button>
                           <span>
                             <Clock3 size={12} /> {revision.branch} ·{' '}
                             {new Date(revision.createdAt).toLocaleString()}
@@ -367,6 +396,23 @@ export function App(): React.JSX.Element {
                       </div>
                     ))}
                   </div>
+                  {selectedDiff && (
+                    <div className="diff-panel">
+                      <strong>Structured diff</strong>
+                      {selectedDiff.files.map((file) => (
+                        <div className="diff-file" key={file.path}>
+                          <span data-status={file.status}>{file.status}</span>
+                          <code>{file.path}</code>
+                          <small>
+                            {file.changes
+                              .slice(0, 4)
+                              .map((change) => `${change.operation} ${change.pointer}`)
+                              .join(' · ')}
+                          </small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </article>
               </div>
             ) : section === 'Characters' ? (
@@ -640,6 +686,9 @@ export function App(): React.JSX.Element {
                 onChange={(event) => setPlannerProviderId(event.target.value)}
               >
                 <option value="fake">Built-in Fake Provider</option>
+                {harnesses.some((harness) => harness.id === 'codex' && harness.available) && (
+                  <option value="harness:codex">Local Codex Harness</option>
+                )}
                 {providers
                   .filter((provider) => provider.hasSecret && provider.protocol === 'openai_chat')
                   .map((provider) => (

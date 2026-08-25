@@ -12,7 +12,11 @@ import {
   OpenAICompatibleProvider,
   ProviderGateway,
 } from '@openmovie/provider-gateway';
-import { ClaudeCodeDetector, CodexAppServerAdapter } from '@openmovie/agent-gateway';
+import {
+  ClaudeCodeDetector,
+  CodexAppServerAdapter,
+  type DynamicToolSpec,
+} from '@openmovie/agent-gateway';
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { movieEntitySchema } from '@openmovie/movie-ir';
 
@@ -40,6 +44,21 @@ export class CoreServer {
     const tasks = persistence ? new TaskEngine(persistence) : new TaskEngine();
     tasks.registerStep('text.generate', async (input, context) => {
       const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      if (providerId === 'harness:codex') {
+        const project = this.requireProject();
+        return this.codex.runTurn({
+          cwd: project.root,
+          text: [
+            'You are the planning harness inside OpenMovie.',
+            'Read the Movie IR YAML files in this project when useful, but do not modify files.',
+            'Return a concise, actionable visual plan for this user goal:',
+            context.task.goal,
+          ].join('\n\n'),
+          signal: context.signal,
+          dynamicTools: this.codexDynamicTools(),
+          onToolCall: (tool, argumentsValue) => this.handleCodexTool(tool, argumentsValue),
+        });
+      }
       const provider = this.providers.get(providerId);
       if (!provider.generateText) throw new Error(`Provider cannot generate text: ${providerId}`);
       return provider.generateText({
@@ -114,6 +133,7 @@ export class CoreServer {
   }
 
   async close(): Promise<void> {
+    this.codex.stop();
     await this.project?.close();
     this.project = undefined;
     this.tasks = this.createTaskEngine();
@@ -210,6 +230,24 @@ export class CoreServer {
           id: command.id,
           ok: true,
           result: this.requireProject().revisions.listBranches(),
+        };
+      case 'revision.diff':
+        return {
+          id: command.id,
+          ok: true,
+          result:
+            command.params.baseRevisionId === undefined
+              ? this.requireProject().revisions.diff(command.params.revisionId)
+              : this.requireProject().revisions.diff(
+                  command.params.revisionId,
+                  command.params.baseRevisionId,
+                ),
+        };
+      case 'revision.working_changes':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().revisions.workingChanges(),
         };
       case 'revision.branch_create':
         return {
@@ -347,6 +385,104 @@ export class CoreServer {
   private requireProject(): ProjectStore {
     if (!this.project) throw new ProjectStoreError('PROJECT_NOT_OPEN', 'No project is open');
     return this.project;
+  }
+
+  private codexDynamicTools(): DynamicToolSpec[] {
+    const object = (properties: Record<string, unknown>, required: string[] = []) => ({
+      type: 'object',
+      properties,
+      required,
+      additionalProperties: false,
+    });
+    return [
+      {
+        type: 'function',
+        name: 'openmovie_project_summary',
+        description: 'Read the current OpenMovie project, branch, and Revision ID.',
+        inputSchema: object({}),
+      },
+      {
+        type: 'function',
+        name: 'openmovie_entity_list',
+        description: 'List structured characters, scenes, or shots.',
+        inputSchema: object({ kind: { type: 'string', enum: ['character', 'scene', 'shot'] } }, [
+          'kind',
+        ]),
+      },
+      {
+        type: 'function',
+        name: 'openmovie_scene_create',
+        description: 'Create a scene through an atomic Movie Revision.',
+        inputSchema: object(
+          {
+            title: { type: 'string' },
+            storyGoal: { type: 'string' },
+            expectedRevisionId: { type: 'string' },
+          },
+          ['title', 'expectedRevisionId'],
+        ),
+      },
+      {
+        type: 'function',
+        name: 'openmovie_shot_create',
+        description: 'Create a shot and update its parent scene in one Movie Revision.',
+        inputSchema: object(
+          {
+            sceneId: { type: 'string' },
+            durationUs: { type: 'integer', minimum: 1 },
+            framing: { type: 'string' },
+            movement: { type: 'string' },
+            expectedRevisionId: { type: 'string' },
+          },
+          ['sceneId', 'durationUs', 'expectedRevisionId'],
+        ),
+      },
+    ];
+  }
+
+  private async handleCodexTool(tool: string, argumentsValue: unknown): Promise<unknown> {
+    if (
+      typeof argumentsValue !== 'object' ||
+      argumentsValue === null ||
+      Array.isArray(argumentsValue)
+    ) {
+      throw new Error(`Invalid arguments for ${tool}`);
+    }
+    const input = argumentsValue as Record<string, unknown>;
+    const project = this.requireProject();
+    if (tool === 'openmovie_project_summary') return this.summary();
+    if (tool === 'openmovie_entity_list') {
+      const kind = input.kind;
+      if (kind !== 'character' && kind !== 'scene' && kind !== 'shot') {
+        throw new Error('kind must be character, scene, or shot');
+      }
+      return { entities: await project.movies.list(kind) };
+    }
+    const expectedRevisionId = input.expectedRevisionId;
+    if (typeof expectedRevisionId !== 'string') throw new Error('expectedRevisionId is required');
+    if (tool === 'openmovie_scene_create') {
+      if (typeof input.title !== 'string') throw new Error('title is required');
+      return project.movies.createScene({
+        title: input.title,
+        expectedRevisionId,
+        authorId: 'codex_harness',
+        ...(typeof input.storyGoal === 'string' ? { storyGoal: input.storyGoal } : {}),
+      });
+    }
+    if (tool === 'openmovie_shot_create') {
+      if (typeof input.sceneId !== 'string' || typeof input.durationUs !== 'number') {
+        throw new Error('sceneId and durationUs are required');
+      }
+      return project.movies.createShot({
+        sceneId: input.sceneId,
+        durationUs: input.durationUs,
+        expectedRevisionId,
+        authorId: 'codex_harness',
+        ...(typeof input.framing === 'string' ? { framing: input.framing } : {}),
+        ...(typeof input.movement === 'string' ? { movement: input.movement } : {}),
+      });
+    }
+    throw new Error(`Unknown OpenMovie dynamic tool: ${tool}`);
   }
 
   private async summary(): Promise<unknown> {

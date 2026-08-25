@@ -52,6 +52,18 @@ pnpm dev
 
 Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Revision commit, Fake Provider media task, Object Store import, and Harness detection.
 
+### Agent Harnesses and MCP
+
+OpenMovie Desktop detects a local Codex installation and can use its official App Server as a read-only planning harness. OpenMovie exposes typed dynamic tools for project inspection and Revision-safe Scene/Shot creation; all writes still pass through Core.
+
+For external Codex, Claude Code, or any MCP host, start the standalone stdio server while the project is not open in Desktop:
+
+```bash
+pnpm mcp --project /absolute/path/to/MyMovie
+```
+
+The MCP server exposes project/entity reads, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. It never exposes Provider API keys.
+
 ## Repository
 
 https://github.com/OpenMovieLabs/OpenMovie

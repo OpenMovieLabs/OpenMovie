@@ -8,6 +8,7 @@ import {
   createId,
   parseProjectManifest,
   parseYaml,
+  parseYamlDocument,
   projectManifestSchema,
   sceneSchema,
   serializeProjectManifest,
@@ -59,6 +60,27 @@ export type BranchRecord = {
   current: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type StructuralChange = {
+  pointer: string;
+  operation: 'add' | 'replace' | 'remove';
+  before?: unknown;
+  after?: unknown;
+};
+
+export type FileDiff = {
+  path: string;
+  status: 'added' | 'modified' | 'deleted';
+  beforeHash?: string;
+  afterHash?: string;
+  changes: StructuralChange[];
+};
+
+export type RevisionDiff = {
+  revisionId: string;
+  baseRevisionId: string | null;
+  files: FileDiff[];
 };
 
 type SnapshotFile = { path: string; content: string; hash: string };
@@ -120,6 +142,38 @@ function validateMovieFile(path: string, content: string): void {
   } else {
     parseYaml(content, projectManifestSchema.partial().passthrough());
   }
+}
+
+function escapePointer(value: string): string {
+  return value.replaceAll('~', '~0').replaceAll('/', '~1');
+}
+
+function structuralDiff(before: unknown, after: unknown, pointer = ''): StructuralChange[] {
+  if (Object.is(before, after)) return [];
+  if (before === undefined) return [{ pointer: pointer || '/', operation: 'add', after }];
+  if (after === undefined) return [{ pointer: pointer || '/', operation: 'remove', before }];
+  if (
+    typeof before !== 'object' ||
+    before === null ||
+    typeof after !== 'object' ||
+    after === null ||
+    Array.isArray(before) !== Array.isArray(after)
+  ) {
+    return [{ pointer: pointer || '/', operation: 'replace', before, after }];
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const changes: StructuralChange[] = [];
+    for (let index = 0; index < Math.max(before.length, after.length); index += 1) {
+      changes.push(...structuralDiff(before[index], after[index], `${pointer}/${index}`));
+    }
+    return changes;
+  }
+  const left = before as Record<string, unknown>;
+  const right = after as Record<string, unknown>;
+  const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+  return keys.flatMap((key) =>
+    structuralDiff(left[key], right[key], `${pointer}/${escapePointer(key)}`),
+  );
 }
 
 export function applyMoviePatch(
@@ -299,6 +353,28 @@ export class RevisionEngine {
       branch: row.branch,
       createdAt: row.created_at,
     }));
+  }
+
+  diff(revisionId: string, baseRevisionId?: string | null): RevisionDiff {
+    const revision = this.database
+      .prepare('SELECT parent_id FROM revisions WHERE id = ? AND project_id = ?')
+      .get(revisionId, this.projectId) as { parent_id: string | null } | undefined;
+    if (!revision) throw new Error(`Revision not found: ${revisionId}`);
+    const baseId = baseRevisionId === undefined ? revision.parent_id : baseRevisionId;
+    return {
+      revisionId,
+      baseRevisionId: baseId,
+      files: this.compareSnapshots(
+        baseId ? this.snapshotForRevision(baseId) : [],
+        this.snapshotForRevision(revisionId),
+      ),
+    };
+  }
+
+  async workingChanges(): Promise<FileDiff[]> {
+    const revisionId = this.currentRevisionId();
+    const committed = revisionId ? this.snapshotForRevision(revisionId) : [];
+    return this.compareSnapshots(committed, await this.captureWorkingSnapshot());
   }
 
   listBranches(): BranchRecord[] {
@@ -539,6 +615,35 @@ export class RevisionEngine {
     return [...new Set([...current.keys(), ...parent.keys()])]
       .filter((path) => current.get(path) !== parent.get(path))
       .sort();
+  }
+
+  private compareSnapshots(beforeFiles: SnapshotFile[], afterFiles: SnapshotFile[]): FileDiff[] {
+    const before = new Map(beforeFiles.map((file) => [file.path, file] as const));
+    const after = new Map(afterFiles.map((file) => [file.path, file] as const));
+    return [...new Set([...before.keys(), ...after.keys()])].sort().flatMap((path): FileDiff[] => {
+      const left = before.get(path);
+      const right = after.get(path);
+      if (left?.hash === right?.hash) return [];
+      const status = left ? (right ? 'modified' : 'deleted') : 'added';
+      let changes: StructuralChange[];
+      try {
+        changes = structuralDiff(
+          left ? parseYamlDocument(left.content) : undefined,
+          right ? parseYamlDocument(right.content) : undefined,
+        );
+      } catch {
+        changes = structuralDiff(left?.content, right?.content);
+      }
+      return [
+        {
+          path,
+          status,
+          ...(left ? { beforeHash: left.hash } : {}),
+          ...(right ? { afterHash: right.hash } : {}),
+          changes,
+        },
+      ];
+    });
   }
 
   private async captureWorkingSnapshot(): Promise<SnapshotFile[]> {

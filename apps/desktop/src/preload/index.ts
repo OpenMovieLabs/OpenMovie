@@ -1,10 +1,12 @@
 import type {
   CoreHealth,
   BranchRecord,
+  FileDiff,
   HarnessHealth,
   InitializeResult,
   ProjectSummary,
   RevisionRecord,
+  RevisionDiff,
   Task,
   TaskEvent,
 } from '@openmovie/contracts';
@@ -21,6 +23,8 @@ export type OpenMovieDesktopApi = {
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
+  getRevisionDiff: (revisionId: string) => Promise<RevisionDiff>;
+  getWorkingChanges: () => Promise<FileDiff[]>;
   listBranches: () => Promise<BranchRecord[]>;
   createBranch: (name: string) => Promise<BranchRecord>;
   switchBranch: (name: string) => Promise<BranchSwitchResult>;
@@ -104,6 +108,9 @@ const api: OpenMovieDesktopApi = {
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,
   restoreRevision: (revisionId) =>
     ipcRenderer.invoke('openmovie:revision-restore', revisionId) as Promise<ProjectSummary>,
+  getRevisionDiff: (revisionId) =>
+    ipcRenderer.invoke('openmovie:revision-diff', revisionId) as Promise<RevisionDiff>,
+  getWorkingChanges: () => ipcRenderer.invoke('openmovie:working-changes') as Promise<FileDiff[]>,
   listBranches: () => ipcRenderer.invoke('openmovie:branch-list') as Promise<BranchRecord[]>,
   createBranch: (name) =>
     ipcRenderer.invoke('openmovie:branch-create', name) as Promise<BranchRecord>,

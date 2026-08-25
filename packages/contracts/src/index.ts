@@ -88,6 +88,19 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('revision.diff'),
+    params: z.object({
+      revisionId: z.string().min(1),
+      baseRevisionId: z.string().nullable().optional(),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('revision.working_changes'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('revision.branch_create'),
     params: z.object({ name: z.string().min(1).max(64) }),
   }),
@@ -273,6 +286,27 @@ export const branchRecordSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const structuralChangeSchema = z.object({
+  pointer: z.string(),
+  operation: z.enum(['add', 'replace', 'remove']),
+  before: z.unknown().optional(),
+  after: z.unknown().optional(),
+});
+
+export const fileDiffSchema = z.object({
+  path: z.string(),
+  status: z.enum(['added', 'modified', 'deleted']),
+  beforeHash: z.string().optional(),
+  afterHash: z.string().optional(),
+  changes: z.array(structuralChangeSchema),
+});
+
+export const revisionDiffSchema = z.object({
+  revisionId: z.string(),
+  baseRevisionId: z.string().nullable(),
+  files: z.array(fileDiffSchema),
+});
+
 export const storedObjectSchema = z.object({
   digest: z.string().regex(/^[a-f0-9]{64}$/),
   uri: z.string(),
@@ -353,6 +387,8 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type MoviePatchOperation = z.infer<typeof moviePatchOperationSchema>;
 export type RevisionRecord = z.infer<typeof revisionRecordSchema>;
 export type BranchRecord = z.infer<typeof branchRecordSchema>;
+export type FileDiff = z.infer<typeof fileDiffSchema>;
+export type RevisionDiff = z.infer<typeof revisionDiffSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEvent = z.infer<typeof taskEventSchema>;
