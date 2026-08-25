@@ -29,3 +29,15 @@ jobs:
       - run: pnpm build
       - name: Package unpacked desktop
         run: pnpm --filter @openmovie/desktop exec electron-builder --dir --publish never
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate CycloneDX SBOM from the locked dependency graph
+        run: node scripts/generate-sbom.mjs artifacts/openmovie-sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openmovie-sbom
+          path: artifacts/openmovie-sbom.cdx.json
+          if-no-files-found: error

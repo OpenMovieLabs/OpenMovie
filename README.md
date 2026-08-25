@@ -74,7 +74,7 @@ Movie IR YAML remains the portable source of truth. If `.openmovie/state.sqlite`
 
 Generated image and video Takes are previewed through a restricted `openmovie-artifact` protocol. It resolves only SHA-256 objects inside the currently open project and does not expose arbitrary local file paths to the Renderer.
 
-Version tags such as `v0.1.0` trigger signed-ready Windows and macOS packaging in GitHub Actions. Signing credentials are optional for development builds and can be added as repository secrets for public distribution.
+Version tags such as `v0.1.0` trigger signed-ready Windows and macOS packaging in GitHub Actions. Tagged releases include a CycloneDX SBOM and `SHA256SUMS.txt` covering every published installer. Signing credentials are optional for development builds and can be added as repository secrets for public distribution.
 
 ### Agent Harnesses and MCP
 
