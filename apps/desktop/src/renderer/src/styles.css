@@ -1008,10 +1008,15 @@ h1 {
 .key-state.ready {
   color: #82b98a;
 }
-.secondary.compact {
+.secondary.compact,
+.primary.compact {
   padding: 6px 9px;
   border-radius: 7px;
   font-size: 11px;
+}
+.settings-subsection {
+  display: block;
+  margin-top: 28px;
 }
 .provider-form {
   display: grid;

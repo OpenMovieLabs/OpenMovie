@@ -31,6 +31,7 @@ import type {
 } from '@openmovie/contracts';
 import type { Character, Scene, Shot, Timeline } from '@openmovie/movie-ir';
 import type {
+  DesktopUpdateState,
   ProviderProbe,
   ProviderProfile,
   RecentProject,
@@ -80,6 +81,7 @@ export function App(): React.JSX.Element {
   const [showSettings, setShowSettings] = useState(false);
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
   const [providerProbes, setProviderProbes] = useState<Record<string, ProviderProbe>>({});
+  const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [providerForm, setProviderForm] = useState({
     id: 'openrouter',
@@ -126,11 +128,13 @@ export function App(): React.JSX.Element {
       window.openMovie.coreHealth(),
       window.openMovie.listHarnesses(),
       window.openMovie.listRecentProjects(),
+      window.openMovie.getUpdateStatus(),
     ])
-      .then(([initialize, health, detectedHarnesses, recents]) => {
+      .then(([initialize, health, detectedHarnesses, recents, nextUpdateState]) => {
         setRuntime({ kind: 'ready', initialize, health });
         setHarnesses(detectedHarnesses);
         setRecentProjects(recents);
+        setUpdateState(nextUpdateState);
         window.openMovie.reportReady();
       })
       .catch((caught: unknown) => {
@@ -140,6 +144,20 @@ export function App(): React.JSX.Element {
         });
       });
   }, []);
+
+  useEffect(() => {
+    if (!showSettings) return;
+    let disposed = false;
+    const refresh = async (): Promise<void> => {
+      const next = await window.openMovie.getUpdateStatus();
+      if (!disposed) setUpdateState(next);
+    };
+    const timer = window.setInterval(() => void refresh(), 1_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [showSettings]);
 
   useEffect(() => {
     if (!lastTask || !['queued', 'planning', 'running'].includes(lastTask.status)) return;
@@ -459,8 +477,23 @@ export function App(): React.JSX.Element {
 
   const openSettings = (): void => {
     void run(async () => {
-      setProviders(await window.openMovie.listProviders());
+      const [nextProviders, nextUpdateState] = await Promise.all([
+        window.openMovie.listProviders(),
+        window.openMovie.getUpdateStatus(),
+      ]);
+      setProviders(nextProviders);
+      setUpdateState(nextUpdateState);
       setShowSettings(true);
+    });
+  };
+
+  const checkForUpdates = (): void => {
+    void run(async () => setUpdateState(await window.openMovie.checkForUpdates()));
+  };
+
+  const installUpdate = (): void => {
+    void run(async () => {
+      await window.openMovie.installUpdate();
     });
   };
 
@@ -1478,6 +1511,34 @@ export function App(): React.JSX.Element {
                   }
                 />
               </label>
+            </div>
+            <span className="section-label settings-subsection">APPLICATION</span>
+            <div className="provider-row" aria-live="polite">
+              <div>
+                <strong>OpenMovie {updateState?.currentVersion ?? ''}</strong>
+                <span>{updateState?.message ?? 'Loading update status…'}</span>
+              </div>
+              <div className="provider-actions">
+                {updateState?.status === 'downloaded' ? (
+                  <button className="primary compact" disabled={busy} onClick={installUpdate}>
+                    Install and restart
+                  </button>
+                ) : (
+                  <button
+                    className="secondary compact"
+                    disabled={
+                      busy ||
+                      !updateState ||
+                      ['disabled', 'checking', 'available', 'downloading'].includes(
+                        updateState.status,
+                      )
+                    }
+                    onClick={checkForUpdates}
+                  >
+                    Check for updates
+                  </button>
+                )}
+              </div>
             </div>
             {error && <div className="error-banner">{error}</div>}
             <div className="modal-actions">

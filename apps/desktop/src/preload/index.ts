@@ -32,6 +32,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 export type OpenMovieDesktopApi = {
   initialize: () => Promise<InitializeResult>;
   coreHealth: () => Promise<CoreHealth>;
+  getUpdateStatus: () => Promise<DesktopUpdateState>;
+  checkForUpdates: () => Promise<DesktopUpdateState>;
+  installUpdate: () => Promise<boolean>;
   reportReady: () => void;
   createProject: (title: string) => Promise<ProjectSummary | null>;
   openProject: () => Promise<ProjectSummary | null>;
@@ -170,9 +173,31 @@ export type ProviderProbe = {
   modelVisible?: boolean;
 };
 
+export type DesktopUpdateState = {
+  status:
+    | 'disabled'
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'downloading'
+    | 'downloaded'
+    | 'not_available'
+    | 'error';
+  currentVersion: string;
+  availableVersion?: string;
+  progressPercent?: number;
+  checkedAt?: string;
+  message: string;
+};
+
 const api: OpenMovieDesktopApi = {
   initialize: () => ipcRenderer.invoke('openmovie:initialize') as Promise<InitializeResult>,
   coreHealth: () => ipcRenderer.invoke('openmovie:core-health') as Promise<CoreHealth>,
+  getUpdateStatus: () =>
+    ipcRenderer.invoke('openmovie:update-status') as Promise<DesktopUpdateState>,
+  checkForUpdates: () =>
+    ipcRenderer.invoke('openmovie:update-check') as Promise<DesktopUpdateState>,
+  installUpdate: () => ipcRenderer.invoke('openmovie:update-install') as Promise<boolean>,
   reportReady: () => ipcRenderer.send('openmovie:renderer-ready'),
   createProject: (title) =>
     ipcRenderer.invoke('openmovie:project-create', title) as Promise<ProjectSummary | null>,

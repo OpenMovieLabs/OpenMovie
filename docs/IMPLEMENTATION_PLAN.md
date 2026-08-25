@@ -349,22 +349,23 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 
 ## 10. M6：Beta Hardening
 
-- 安装包和自动更新。
-- macOS 签名与 Notarization。
-- Windows 签名。
-- Crash Recovery。
-- Project Backup/Repair。
+- [x] Windows NSIS/Portable 与 macOS DMG/ZIP 安装包。
+- [x] GitHub Release Stable Channel 自动检查、后台下载、用户确认安装。
+- [x] macOS 签名与 Notarization CI 接线及 Tag fail-closed 门禁。
+- [x] Windows 签名 CI 接线及 Tag fail-closed 门禁。
+- [x] Crash Recovery。
+- [x] Project Backup/Repair。
 - 磁盘与 Cache 管理。
 - 性能基线。
 - Accessibility。
 - 国际化基础。
 - Plugin 开发模式。
-- SBOM、依赖扫描和安全报告渠道。
+- [x] SBOM、锁文件依赖基线和安全报告渠道。
 - 完整用户与开发文档。
 
 当前已具备崩溃 Revision Journal 恢复、陈旧写锁显式接管、完整 Project 导出、深度 Doctor，以及运行数据库缺失时从 Movie IR 重建最小状态。数据库跨项目 ID 时拒绝静默绑定；Take/Task/Feedback 等不可从源文件推导的数据必须依靠完整导出备份。
 
-CI 从锁定的 pnpm 依赖图生成 CycloneDX 1.6 SBOM；Tag Release 在汇总 macOS/Windows 产物后生成统一 SHA-256 清单，并与安装包一同发布。
+CI 从锁定的 pnpm 依赖图生成 CycloneDX 1.6 SBOM；Tag Release 在汇总 macOS/Windows 产物后生成统一 SHA-256 清单，并与安装包、`latest.yml` / `latest-mac.yml` 和 Blockmap 一同发布。Tag 构建缺少平台签名或 macOS 公证 Secret 时直接失败；手工触发的开发包允许无签名。Desktop 开发版不联网检查更新，正式安装版只使用公开 GitHub Release Stable Channel，并在下载完成后等待用户点击安装。
 
 Exit Criteria 使用 SECURITY.md 的 Security Gate 和 PRODUCT_DESIGN.md 的 MVP 验收。
 

@@ -31,10 +31,14 @@ import {
   timelineSchema,
 } from '@openmovie/movie-ir';
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } from 'electron';
+import electronUpdater from 'electron-updater';
 
 import { CoreClient } from './core-client.js';
 import { probeProvider } from './provider-probe.js';
 import { EncryptedSecretStore } from './secret-store.js';
+import { DesktopUpdateManager } from './update-manager.js';
+
+const { autoUpdater } = electronUpdater;
 
 let core: CoreClient | undefined;
 let secrets: EncryptedSecretStore | undefined;
@@ -146,6 +150,10 @@ void app
         };
       },
     });
+    const updates = new DesktopUpdateManager(autoUpdater, {
+      enabled: app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32'),
+      currentVersion: app.getVersion(),
+    });
 
     const initialize = async () =>
       initializeResultSchema.parse(
@@ -166,11 +174,24 @@ void app
     ipcMain.handle('openmovie:core-health', async () =>
       coreHealthSchema.parse(await core?.request({ method: 'core.health', params: {} })),
     );
+    ipcMain.handle('openmovie:update-status', () => updates.getState());
+    ipcMain.handle('openmovie:update-check', () => updates.check());
+    ipcMain.handle('openmovie:update-install', () => {
+      updates.install();
+      return true;
+    });
     ipcMain.handle('openmovie:harness-list', async () =>
       harnessHealthSchema
         .array()
         .parse(await core?.request({ method: 'harness.list', params: {} })),
     );
+
+    if (updates.getState().status !== 'disabled' && !process.env.OPENMOVIE_SMOKE_TEST) {
+      const firstCheck = setTimeout(() => void updates.check(), 15_000);
+      const recurringCheck = setInterval(() => void updates.check(), 6 * 60 * 60_000);
+      firstCheck.unref();
+      recurringCheck.unref();
+    }
     ipcMain.handle('openmovie:project-create', async (_event, title: unknown) => {
       if (typeof title !== 'string' || title.trim().length === 0)
         throw new Error('Title is required');

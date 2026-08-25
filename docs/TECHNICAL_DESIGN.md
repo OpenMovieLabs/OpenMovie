@@ -1303,10 +1303,16 @@ interface SecretStore {
 
 ### 18.4 更新
 
-- Stable、Beta 和 Nightly Channel。
+- MVP 使用 OpenMovieLabs/OpenMovie 的公开 GitHub Release Stable Channel；Beta 和 Nightly 保留为后续能力。
+- electron-builder 生成 `latest.yml`、`latest-mac.yml` 与 Blockmap，electron-updater 校验清单和平台代码签名。
+- 仅正式安装的 Windows/macOS Build 自动检查；开发版和不受支持平台保持 disabled，不产生后台网络请求。
+- 更新可后台下载，但 `autoInstallOnAppQuit` 关闭；只有用户点击“Install and restart”才调用安装。
+- Update IPC 只暴露版本、百分比和稳定状态文案，不把 URL、响应正文或网络错误送入 Renderer。
 - 数据 Schema 迁移前创建备份。
 - Core、Desktop、Adapter 和 Project Schema 兼容性检查。
 - 自动更新失败不影响打开现有项目。
+
+Tag Release 采用 fail-closed 签名门禁。macOS 需要 `MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 与 `APPLE_TEAM_ID`，由 electron-builder 完成 Developer ID 签名、公证和 Stapling；Windows 需要 `WIN_CSC_LINK` 与 `WIN_CSC_KEY_PASSWORD` 完成 Authenticode 签名。Secret 只从受保护 GitHub Actions 环境注入，不写入仓库或构建日志。Workflow dispatch 可生成明确标识用途的无签名开发包，但 Tag 不允许静默降级。
 
 ## 19. Core IPC
 

@@ -316,6 +316,15 @@ Plugin Manifest 声明：
 - CI 最小权限和受保护发布环境。
 - 签名密钥不进入普通 CI 日志和 Fork 构建。
 
+当前实现约束：
+
+- 只有打包后的 Windows/macOS 应用启用更新，开发运行不会访问更新服务。
+- 更新源固定为公开 `OpenMovieLabs/OpenMovie` GitHub Releases，不接受 Renderer 或 Project 提供的 Feed URL。
+- 自动下载不等于自动安装；`autoInstallOnAppQuit` 关闭，安装需要用户在 Settings 中显式确认。
+- Renderer 只读取归一化状态，不接触下载 URL、签名证书或网络错误正文。
+- Public Tag Release 缺少任一平台签名 Secret 时失败；macOS 同时要求 Notarization 凭据。
+- `latest*.yml` 的 SHA-512、平台代码签名、发布附件 SHA-256 清单和 CycloneDX SBOM 构成分层完整性证据。
+
 ## 19. Object Store
 
 - 文件名来自内容哈希，不来自用户输入。

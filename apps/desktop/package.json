@@ -20,6 +20,7 @@
     "@openmovie/contracts": "workspace:*",
     "@openmovie/movie-ir": "workspace:*",
     "better-sqlite3": "13.0.3",
+    "electron-updater": "6.8.9",
     "lucide-react": "1.34.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -64,9 +65,18 @@
         "to": "build/Release/better_sqlite3.node"
       }
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "OpenMovieLabs",
+        "repo": "OpenMovie",
+        "releaseType": "release"
+      }
+    ],
     "mac": {
       "category": "public.app-category.video",
       "icon": "resources/icon.png",
+      "hardenedRuntime": true,
       "target": [
         "dmg",
         "zip"

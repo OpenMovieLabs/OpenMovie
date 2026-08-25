@@ -23,6 +23,15 @@ jobs:
           - os: windows-2025
             target: win
     runs-on: ${{ matrix.os }}
+    env:
+      OPENMOVIE_REQUIRE_CODE_SIGNING: ${{ github.ref_type == 'tag' && '1' || '0' }}
+      CSC_LINK: ${{ matrix.target == 'mac' && secrets.MAC_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.target == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+      APPLE_ID: ${{ matrix.target == 'mac' && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.target == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ matrix.target == 'mac' && secrets.APPLE_TEAM_ID || '' }}
+      WIN_CSC_LINK: ${{ matrix.target == 'win' && secrets.WIN_CSC_LINK || '' }}
+      WIN_CSC_KEY_PASSWORD: ${{ matrix.target == 'win' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -45,6 +54,8 @@ jobs:
         shell: bash
       - run: pnpm check
       - run: pnpm build
+      - name: Verify release signing configuration
+        run: node scripts/verify-release-signing.mjs ${{ matrix.target }}
       - name: Package desktop
         run: pnpm --filter @openmovie/desktop exec electron-builder --${{ matrix.target }} --publish never
       - uses: actions/upload-artifact@v4
@@ -54,6 +65,8 @@ jobs:
             release/${{ env.OPENMOVIE_VERSION }}/*.dmg
             release/${{ env.OPENMOVIE_VERSION }}/*.zip
             release/${{ env.OPENMOVIE_VERSION }}/*.exe
+            release/${{ env.OPENMOVIE_VERSION }}/*.yml
+            release/${{ env.OPENMOVIE_VERSION }}/*.blockmap
           if-no-files-found: error
 
   publish:
