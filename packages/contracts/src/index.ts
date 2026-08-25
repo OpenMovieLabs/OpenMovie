@@ -171,12 +171,33 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('take.list'),
+    params: z.object({ shotId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('take.select'),
+    params: z.object({
+      takeId: z.string().min(1),
+      expectedRevisionId: z.string().nullable(),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('evaluation.list'),
+    params: z.object({ takeId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('task.create'),
     params: z.object({
       goal: z.string().trim().min(1).max(10_000),
       plannerProviderId: z.string().min(1).default('fake'),
       plannerModel: z.string().min(1).default('fake-text-v1'),
       requiresApproval: z.boolean().default(false),
+      targetShotId: z.string().min(1).optional(),
+      mediaKind: z.enum(['image', 'video']).default('image'),
     }),
   }),
   z.object({
@@ -315,6 +336,35 @@ export const storedObjectSchema = z.object({
   path: z.string(),
 });
 
+export const takeRecordSchema = z.object({
+  id: z.string(),
+  shotId: z.string(),
+  artifactId: z.string(),
+  artifact: z.object({
+    id: z.string(),
+    objectUri: z.string(),
+    mimeType: z.string(),
+    byteSize: z.number().int().nonnegative(),
+    metadata: z.record(z.string(), z.unknown()),
+    createdAt: z.string().datetime(),
+  }),
+  runId: z.string().optional(),
+  provider: z.record(z.string(), z.unknown()),
+  generation: z.record(z.string(), z.unknown()),
+  createdAt: z.string().datetime(),
+});
+
+export const evaluationRecordSchema = z.object({
+  id: z.string(),
+  takeId: z.string(),
+  evaluator: z.string(),
+  status: z.enum(['passed', 'warning', 'failed']),
+  score: z.number().optional(),
+  findings: z.array(z.record(z.string(), z.unknown())),
+  provenance: z.record(z.string(), z.unknown()),
+  createdAt: z.string().datetime(),
+});
+
 export const taskStepSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -390,6 +440,8 @@ export type BranchRecord = z.infer<typeof branchRecordSchema>;
 export type FileDiff = z.infer<typeof fileDiffSchema>;
 export type RevisionDiff = z.infer<typeof revisionDiffSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
+export type TakeRecord = z.infer<typeof takeRecordSchema>;
+export type EvaluationRecord = z.infer<typeof evaluationRecordSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEvent = z.infer<typeof taskEventSchema>;
 export type HarnessHealth = z.infer<typeof harnessHealthSchema>;

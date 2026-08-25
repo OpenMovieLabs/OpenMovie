@@ -21,6 +21,8 @@ import type {
   RevisionRecord,
   RevisionDiff,
   Task,
+  TakeRecord,
+  EvaluationRecord,
 } from '@openmovie/contracts';
 import type { Character, Scene, Shot } from '@openmovie/movie-ir';
 import type { ProviderProfile } from '../../preload/index.js';
@@ -45,6 +47,10 @@ export function App(): React.JSX.Element {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [shots, setShots] = useState<Shot[]>([]);
+  const [takesByShot, setTakesByShot] = useState<Record<string, TakeRecord[]>>({});
+  const [evaluationsByTake, setEvaluationsByTake] = useState<Record<string, EvaluationRecord[]>>(
+    {},
+  );
   const [section, setSection] = useState<ProjectSection>('Overview');
   const [showCreate, setShowCreate] = useState(false);
   const [showTask, setShowTask] = useState(false);
@@ -60,6 +66,8 @@ export function App(): React.JSX.Element {
   });
   const [plannerProviderId, setPlannerProviderId] = useState('fake');
   const [requiresApproval, setRequiresApproval] = useState(false);
+  const [taskShotId, setTaskShotId] = useState('');
+  const [taskMediaKind, setTaskMediaKind] = useState<'image' | 'video'>('image');
   const [branchName, setBranchName] = useState('visual-experiment');
   const [characterName, setCharacterName] = useState('');
   const [characterAppearance, setCharacterAppearance] = useState('');
@@ -134,7 +142,20 @@ export function App(): React.JSX.Element {
       nextCharacters.filter((entity): entity is Character => entity.type === 'character'),
     );
     setScenes(nextScenes.filter((entity): entity is Scene => entity.type === 'scene'));
-    setShots(nextShots.filter((entity): entity is Shot => entity.type === 'shot'));
+    const typedShots = nextShots.filter((entity): entity is Shot => entity.type === 'shot');
+    setShots(typedShots);
+    const takeEntries = await Promise.all(
+      typedShots.map(async (shot) => [shot.id, await window.openMovie.listTakes(shot.id)] as const),
+    );
+    const nextTakes = Object.fromEntries(takeEntries);
+    setTakesByShot(nextTakes);
+    const allTakes = takeEntries.flatMap(([, items]) => items);
+    const evaluationEntries = await Promise.all(
+      allTakes.map(
+        async (take) => [take.id, await window.openMovie.listEvaluations(take.id)] as const,
+      ),
+    );
+    setEvaluationsByTake(Object.fromEntries(evaluationEntries));
     setWorkingChanges(nextWorkingChanges);
     setSelectedDiff(null);
     setShotSceneId((current) => current || (nextScenes[0]?.id ?? ''));
@@ -217,10 +238,15 @@ export function App(): React.JSX.Element {
 
   const runTask = (): void => {
     void run(async () => {
-      const result = await window.openMovie.runTask(goal, plannerProviderId, requiresApproval);
+      const result = await window.openMovie.runTask(
+        goal,
+        plannerProviderId,
+        requiresApproval,
+        taskShotId || undefined,
+        taskMediaKind,
+      );
       setLastTask(result.task);
-      setProject(result.project);
-      setRevisions(result.revisions);
+      await loadProject(result.project);
       setShowTask(false);
     });
   };
@@ -230,14 +256,21 @@ export function App(): React.JSX.Element {
     void run(async () => {
       const result = await window.openMovie.approveTask(lastTask.id);
       setLastTask(result.task);
-      setProject(result.project);
-      setRevisions(result.revisions);
+      await loadProject(result.project);
+    });
+  };
+
+  const selectTake = (takeId: string): void => {
+    void run(async () => {
+      const result = await window.openMovie.selectTake(takeId);
+      await loadProject(result.project);
     });
   };
 
   const openTask = (): void => {
     void run(async () => {
       setProviders(await window.openMovie.listProviders());
+      setTaskShotId((current) => current || (shots[0]?.id ?? ''));
       setShowTask(true);
     });
   };
@@ -506,15 +539,56 @@ export function App(): React.JSX.Element {
                   <span className="section-label">SHOTS</span>
                   <h2>Every generated take starts from inspectable intent.</h2>
                   {shots.map((shot) => (
-                    <div className="entity-row" key={shot.id}>
-                      <div>
-                        <strong>{shot.camera.framing || 'Unspecified framing'}</strong>
-                        <span>
-                          {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
-                          {shot.camera.movement || 'static'} · {shot.scene}
-                        </span>
+                    <div className="shot-card" key={shot.id}>
+                      <div className="entity-row">
+                        <div>
+                          <strong>{shot.camera.framing || 'Unspecified framing'}</strong>
+                          <span>
+                            {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
+                            {shot.camera.movement || 'static'} · {shot.scene}
+                          </span>
+                        </div>
+                        <code>r{shot.revision}</code>
                       </div>
-                      <code>r{shot.revision}</code>
+                      <div className="take-list">
+                        {(takesByShot[shot.id] ?? []).map((take) => {
+                          const evaluation = evaluationsByTake[take.id]?.[0];
+                          const selected = shot.selected_take === take.id;
+                          const model =
+                            typeof take.provider.model === 'string'
+                              ? take.provider.model
+                              : typeof take.provider.providerId === 'string'
+                                ? take.provider.providerId
+                                : 'Take';
+                          return (
+                            <div className="take-row" key={take.id} data-selected={selected}>
+                              <div>
+                                <strong>{model}</strong>
+                                <span>
+                                  {take.artifact.mimeType} · {take.artifact.byteSize} bytes
+                                  {evaluation
+                                    ? ` · score ${Math.round((evaluation.score ?? 0) * 100)}`
+                                    : ''}
+                                </span>
+                              </div>
+                              <span className="evaluation-state" data-status={evaluation?.status}>
+                                {evaluation?.status ?? 'not evaluated'}
+                              </span>
+                              <button
+                                disabled={busy || selected}
+                                onClick={() => selectTake(take.id)}
+                              >
+                                {selected ? 'Selected' : 'Select'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {(takesByShot[shot.id] ?? []).length === 0 && (
+                          <span className="no-takes">
+                            No Takes yet. Target this shot in a task.
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </article>
@@ -706,9 +780,30 @@ export function App(): React.JSX.Element {
               />
               Pause for approval before generation
             </label>
+            <label>
+              Target shot
+              <select value={taskShotId} onChange={(event) => setTaskShotId(event.target.value)}>
+                <option value="">Project-level fixture</option>
+                {shots.map((shot) => (
+                  <option key={shot.id} value={shot.id}>
+                    {shot.id} · {shot.camera.framing || 'shot'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Media output
+              <select
+                value={taskMediaKind}
+                onChange={(event) => setTaskMediaKind(event.target.value as 'image' | 'video')}
+              >
+                <option value="image">Image Take</option>
+                <option value="video">Video Take</option>
+              </select>
+            </label>
             <p>
-              The planning model produces visual intent; the deterministic image fixture keeps this
-              early slice free of paid generation calls.
+              The planning model produces visual intent; built-in deterministic media keeps local
+              development free of paid generation calls.
             </p>
             <div className="modal-actions">
               <button className="secondary" onClick={() => setShowTask(false)}>

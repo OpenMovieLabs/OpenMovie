@@ -418,6 +418,57 @@ h1 {
   color: #8e8a82;
   font-size: 11px;
 }
+.shot-card {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.shot-card .entity-row {
+  border-top: 0;
+}
+.take-list {
+  display: grid;
+  gap: 7px;
+  padding: 0 0 14px 16px;
+}
+.take-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.16);
+}
+.take-row[data-selected='true'] {
+  border-color: rgba(202, 151, 82, 0.45);
+  background: rgba(202, 151, 82, 0.07);
+}
+.take-row strong,
+.take-row span {
+  display: block;
+}
+.take-row span,
+.no-takes {
+  margin-top: 3px;
+  color: #77746d;
+  font-size: 11px;
+}
+.take-row button {
+  padding: 6px 9px;
+  color: #c9c4bb;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.evaluation-state[data-status='passed'] {
+  color: #7bbf88;
+}
+.evaluation-state[data-status='warning'] {
+  color: #d8a85d;
+}
+.evaluation-state[data-status='failed'] {
+  color: #e27272;
+}
 .entity-form {
   display: flex;
   flex-direction: column;

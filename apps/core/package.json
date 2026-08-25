@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@openmovie/contracts": "workspace:*",
+    "@openmovie/eval-engine": "workspace:*",
     "@openmovie/agent-gateway": "workspace:*",
     "@openmovie/movie-ir": "workspace:*",
     "@openmovie/provider-gateway": "workspace:*",

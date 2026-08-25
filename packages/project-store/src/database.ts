@@ -116,6 +116,37 @@ const migrations = [
         FROM projects WHERE current_revision_id IS NOT NULL;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE artifacts ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';
+      CREATE TABLE IF NOT EXISTS provider_runs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        provider_job_id TEXT,
+        status TEXT NOT NULL,
+        usage_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS evaluations (
+        id TEXT PRIMARY KEY,
+        take_id TEXT NOT NULL REFERENCES takes(id) ON DELETE CASCADE,
+        evaluator TEXT NOT NULL,
+        status TEXT NOT NULL,
+        score REAL,
+        findings_json TEXT NOT NULL,
+        provenance_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS evaluations_take_created
+        ON evaluations(take_id, created_at DESC);
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

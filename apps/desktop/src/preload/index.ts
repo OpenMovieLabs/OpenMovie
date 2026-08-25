@@ -9,6 +9,8 @@ import type {
   RevisionDiff,
   Task,
   TaskEvent,
+  TakeRecord,
+  EvaluationRecord,
 } from '@openmovie/contracts';
 import type { Character, MovieEntity, Scene, Shot } from '@openmovie/movie-ir';
 import { contextBridge, ipcRenderer } from 'electron';
@@ -37,10 +39,15 @@ export type OpenMovieDesktopApi = {
     framing?: string,
     movement?: string,
   ) => Promise<EntityCommitResult<Shot>>;
+  listTakes: (shotId: string) => Promise<TakeRecord[]>;
+  selectTake: (takeId: string) => Promise<TakeSelectionResult>;
+  listEvaluations: (takeId: string) => Promise<EvaluationRecord[]>;
   runTask: (
     goal: string,
     plannerProviderId?: string,
     requiresApproval?: boolean,
+    targetShotId?: string,
+    mediaKind?: 'image' | 'video',
   ) => Promise<TaskRunResult>;
   listTasks: () => Promise<Task[]>;
   approveTask: (taskId: string) => Promise<TaskRunResult>;
@@ -66,6 +73,13 @@ export type EntityCommitResult<T extends MovieEntity> = {
 
 export type BranchSwitchResult = {
   branch: BranchRecord;
+  project: ProjectSummary;
+  revisions: RevisionRecord[];
+};
+
+export type TakeSelectionResult = {
+  shot: Shot;
+  revisionId: string;
   project: ProjectSummary;
   revisions: RevisionRecord[];
 };
@@ -130,12 +144,19 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:shot-create', sceneId, durationUs, framing, movement) as Promise<
       EntityCommitResult<Shot>
     >,
-  runTask: (goal, plannerProviderId, requiresApproval) =>
+  listTakes: (shotId) => ipcRenderer.invoke('openmovie:take-list', shotId) as Promise<TakeRecord[]>,
+  selectTake: (takeId) =>
+    ipcRenderer.invoke('openmovie:take-select', takeId) as Promise<TakeSelectionResult>,
+  listEvaluations: (takeId) =>
+    ipcRenderer.invoke('openmovie:evaluation-list', takeId) as Promise<EvaluationRecord[]>,
+  runTask: (goal, plannerProviderId, requiresApproval, targetShotId, mediaKind) =>
     ipcRenderer.invoke(
       'openmovie:task-run',
       goal,
       plannerProviderId,
       requiresApproval,
+      targetShotId,
+      mediaKind,
     ) as Promise<TaskRunResult>,
   listTasks: () => ipcRenderer.invoke('openmovie:task-list') as Promise<Task[]>,
   approveTask: (taskId) =>

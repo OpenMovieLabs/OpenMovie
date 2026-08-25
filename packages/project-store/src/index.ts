@@ -1,6 +1,7 @@
 export * from './errors.js';
 export * from './fs.js';
 export * from './lock.js';
+export * from './media-repository.js';
 export * from './movie-workspace.js';
 export * from './object-store.js';
 export * from './project-store.js';

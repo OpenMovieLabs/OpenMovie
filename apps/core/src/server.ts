@@ -19,6 +19,8 @@ import {
 } from '@openmovie/agent-gateway';
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { movieEntitySchema } from '@openmovie/movie-ir';
+import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
+import type { StoredObject, TakeRecord } from '@openmovie/project-store';
 
 const startedAt = new Date();
 const coreVersion = '0.0.0';
@@ -33,10 +35,12 @@ export class CoreServer {
   private readonly providers = new ProviderGateway();
   private readonly codex = new CodexAppServerAdapter();
   private readonly claude = new ClaudeCodeDetector();
+  private readonly evaluations = new EvaluationEngine();
 
   constructor() {
     const fake = new FakeProvider();
     this.providers.register(fake);
+    this.evaluations.register(new BuiltInTakeEvaluator());
     this.tasks = this.createTaskEngine();
   }
 
@@ -76,16 +80,32 @@ export class CoreServer {
     });
     tasks.registerStep('image.generate', async (input, context) => {
       const project = this.requireProject();
-      const provider = this.providers.get('fake');
-      if (!provider.generateImage) throw new Error('Fake provider cannot generate images');
+      const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      const provider = this.providers.get(providerId);
+      if (!provider.generateImage)
+        throw new Error(`Provider cannot generate images: ${providerId}`);
       const generated = await provider.generateImage({
-        model: 'fake-image-v1',
+        model: typeof input.model === 'string' ? input.model : 'fake-image-v1',
         prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
         width: 1,
         height: 1,
         signal: context.signal,
       });
       const object = await project.objects.importBytes(generated.bytes, 'generated.png');
+      if (typeof input.shotId === 'string') {
+        const take = await project.media.createTake({
+          shotId: input.shotId,
+          object,
+          runId: context.task.id,
+          provider: { providerId, model: generated.model },
+          generation: { requestHash: generated.requestHash, prompt: context.task.goal },
+        });
+        return {
+          object,
+          take,
+          evaluation: await this.evaluateTake(project, input.shotId, take, object),
+        };
+      }
       await project.revisions.commit({
         expectedRevisionId: project.revisions.currentRevisionId(),
         authorType: 'agent',
@@ -104,6 +124,44 @@ export class CoreServer {
         ],
       });
       return object;
+    });
+    tasks.registerStep('video.generate', async (input, context) => {
+      const project = this.requireProject();
+      const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
+      const provider = this.providers.get(providerId);
+      if (!provider.submitVideo || !provider.getVideoJob || !provider.collectVideo) {
+        throw new Error(`Provider cannot generate videos: ${providerId}`);
+      }
+      let job = await provider.submitVideo({
+        model: typeof input.model === 'string' ? input.model : 'fake-video-v1',
+        prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
+        mode: 'text_to_video',
+        durationSeconds: typeof input.durationSeconds === 'number' ? input.durationSeconds : 4,
+        signal: context.signal,
+      });
+      for (let attempt = 0; ['queued', 'running'].includes(job.status); attempt += 1) {
+        if (attempt >= 600) throw new Error(`Video job timed out: ${job.id}`);
+        await this.waitForPoll(context.signal);
+        job = await provider.getVideoJob(job.id, context.signal);
+      }
+      if (job.status !== 'succeeded') throw new Error(job.error ?? `Video job ${job.status}`);
+      const generated = (await provider.collectVideo(job.id, context.signal))[0];
+      if (!generated) throw new Error('Video Provider returned no artifact');
+      const object = await project.objects.importBytes(generated.bytes, 'generated.mp4');
+      if (typeof input.shotId !== 'string') return { object, job };
+      const take = await project.media.createTake({
+        shotId: input.shotId,
+        object,
+        runId: context.task.id,
+        provider: { providerId, model: generated.model, jobId: job.id },
+        generation: { requestHash: generated.requestHash, prompt: context.task.goal },
+      });
+      return {
+        object,
+        job,
+        take,
+        evaluation: await this.evaluateTake(project, input.shotId, take, object),
+      };
     });
     return tasks;
   }
@@ -167,6 +225,8 @@ export class CoreServer {
               'revision.branch',
               'movie.entity',
               'object.import',
+              'take.manage',
+              'evaluation.read',
               'task.run',
               'task.approve',
               'task.events',
@@ -298,8 +358,34 @@ export class CoreServer {
         const object = await this.requireProject().objects.importFile(command.params.path);
         return { id: command.id, ok: true, result: object };
       }
+      case 'take.list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().media.listTakes(command.params.shotId),
+        };
+      case 'take.select':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().media.selectTake(command.params),
+        };
+      case 'evaluation.list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().media.listEvaluations(command.params.takeId),
+        };
       case 'task.create': {
-        this.requireProject();
+        const project = this.requireProject();
+        let durationSeconds = 4;
+        if (command.params.targetShotId) {
+          const target = movieEntitySchema.parse(
+            await project.movies.read('shot', command.params.targetShotId),
+          );
+          if (target.type !== 'shot') throw new Error('Task target must be a shot');
+          durationSeconds = target.duration_us / 1_000_000;
+        }
         const task = this.tasks.create(
           command.params.goal,
           [
@@ -312,9 +398,18 @@ export class CoreServer {
               },
             },
             {
-              kind: 'image.generate',
-              title: 'Generate a visual fixture',
-              input: { prompt: command.params.goal },
+              kind: command.params.mediaKind === 'video' ? 'video.generate' : 'image.generate',
+              title:
+                command.params.mediaKind === 'video'
+                  ? 'Generate a video Take'
+                  : 'Generate an image Take',
+              input: {
+                prompt: command.params.goal,
+                providerId: 'fake',
+                model: command.params.mediaKind === 'video' ? 'fake-video-v1' : 'fake-image-v1',
+                durationSeconds,
+                ...(command.params.targetShotId ? { shotId: command.params.targetShotId } : {}),
+              },
             },
           ],
           { requiresApproval: command.params.requiresApproval },
@@ -385,6 +480,51 @@ export class CoreServer {
   private requireProject(): ProjectStore {
     if (!this.project) throw new ProjectStoreError('PROJECT_NOT_OPEN', 'No project is open');
     return this.project;
+  }
+
+  private async evaluateTake(
+    project: ProjectStore,
+    shotId: string,
+    take: TakeRecord,
+    object: StoredObject,
+  ): Promise<unknown> {
+    const shot = movieEntitySchema.parse(await project.movies.read('shot', shotId));
+    if (shot.type !== 'shot') throw new Error(`Entity is not a shot: ${shotId}`);
+    const evaluation = await this.evaluations.run({
+      shot,
+      take: {
+        id: take.id,
+        mimeType: object.mimeType,
+        byteSize: object.byteSize,
+        provider: take.provider,
+        generation: take.generation,
+      },
+    });
+    return project.media.recordEvaluation({
+      takeId: take.id,
+      evaluator: 'openmovie.aggregate.v1',
+      status: evaluation.status,
+      score: evaluation.score,
+      findings: evaluation.results.flatMap((result) =>
+        result.findings.map((finding) => ({ ...finding, evaluator: result.evaluator })),
+      ),
+      provenance: { deterministic: true, evaluatorCount: evaluation.results.length },
+    });
+  }
+
+  private waitForPoll(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', abort);
+        resolve();
+      }, 1_000);
+      const abort = (): void => {
+        clearTimeout(timer);
+        reject(new DOMException('Cancelled', 'AbortError'));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+    });
   }
 
   private codexDynamicTools(): DynamicToolSpec[] {

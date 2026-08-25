@@ -14,7 +14,7 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 ## Status
 
-Active implementation. Product, architecture, project format, protocol, security, and implementation baselines are defined; repository foundation and the first vertical slice are underway.
+Active implementation. The desktop vertical slice now covers portable Movie IR projects, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers, asynchronous video-provider jobs, immutable image/video Takes, deterministic evaluations, Take selection, structured diffs, and creative branches.
 
 ## Documentation
 
@@ -50,7 +50,7 @@ pnpm check
 pnpm dev
 ```
 
-Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Revision commit, Fake Provider media task, Object Store import, and Harness detection.
+Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Movie IR entity commits, targeted Fake Provider generation, Object Store import, Take and evaluation persistence, and Harness detection.
 
 ### Agent Harnesses and MCP
 

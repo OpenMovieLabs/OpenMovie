@@ -7,6 +7,7 @@ import {
   branchRecordSchema,
   coreHealthSchema,
   fileDiffSchema,
+  evaluationRecordSchema,
   harnessHealthSchema,
   initializeResultSchema,
   projectSummarySchema,
@@ -14,6 +15,7 @@ import {
   revisionDiffSchema,
   taskSchema,
   taskEventSchema,
+  takeRecordSchema,
 } from '@openmovie/contracts';
 import { movieEntitySchema } from '@openmovie/movie-ir';
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
@@ -329,7 +331,14 @@ void app
     );
     ipcMain.handle(
       'openmovie:task-run',
-      async (_event, goal: unknown, plannerProviderId: unknown, requiresApproval: unknown) => {
+      async (
+        _event,
+        goal: unknown,
+        plannerProviderId: unknown,
+        requiresApproval: unknown,
+        targetShotId: unknown,
+        mediaKind: unknown,
+      ) => {
         if (typeof goal !== 'string' || goal.trim().length === 0)
           throw new Error('Task goal is required');
         let providerId = 'fake';
@@ -362,6 +371,8 @@ void app
               plannerProviderId: providerId,
               plannerModel: model,
               requiresApproval: requiresApproval === true,
+              mediaKind: mediaKind === 'video' ? 'video' : 'image',
+              ...(typeof targetShotId === 'string' && targetShotId ? { targetShotId } : {}),
             },
           }),
         );
@@ -379,6 +390,45 @@ void app
         };
       },
     );
+    ipcMain.handle('openmovie:take-list', async (_event, shotId: unknown) => {
+      if (typeof shotId !== 'string') throw new Error('Shot ID is required');
+      return takeRecordSchema
+        .array()
+        .parse(await core?.request({ method: 'take.list', params: { shotId } }));
+    });
+    ipcMain.handle('openmovie:take-select', async (_event, takeId: unknown) => {
+      if (typeof takeId !== 'string') throw new Error('Take ID is required');
+      const summary = projectSummarySchema.parse(
+        await core?.request({ method: 'project.get_summary', params: {} }),
+      );
+      const selected = await core?.request({
+        method: 'take.select',
+        params: {
+          takeId,
+          expectedRevisionId: summary.currentRevisionId,
+          authorId: 'user_local',
+        },
+      });
+      if (typeof selected !== 'object' || selected === null || !('shot' in selected)) {
+        throw new Error('Core returned an invalid Take selection');
+      }
+      return {
+        shot: movieEntitySchema.parse(selected.shot),
+        revisionId: String('revisionId' in selected ? selected.revisionId : ''),
+        project: projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        ),
+        revisions: revisionRecordSchema
+          .array()
+          .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
+      };
+    });
+    ipcMain.handle('openmovie:evaluation-list', async (_event, takeId: unknown) => {
+      if (typeof takeId !== 'string') throw new Error('Take ID is required');
+      return evaluationRecordSchema
+        .array()
+        .parse(await core?.request({ method: 'evaluation.list', params: { takeId } }));
+    });
     ipcMain.handle('openmovie:task-list', async () =>
       taskSchema.array().parse(await core?.request({ method: 'task.list', params: {} })),
     );
@@ -475,6 +525,30 @@ void app
             },
           }),
         );
+        const afterRename = projectSummarySchema.parse(
+          await core.request({ method: 'project.get_summary', params: {} }),
+        );
+        const sceneCommit = parseEntityCommit(
+          await core.request({
+            method: 'movie.scene_create',
+            params: {
+              title: 'Opening',
+              expectedRevisionId: afterRename.currentRevisionId,
+              authorId: 'smoke_test',
+            },
+          }),
+        ) as { entity: { id: string }; revision: { id: string } };
+        const shotCommit = parseEntityCommit(
+          await core.request({
+            method: 'movie.shot_create',
+            params: {
+              sceneId: sceneCommit.entity.id,
+              durationUs: 1_000_000,
+              expectedRevisionId: sceneCommit.revision.id,
+              authorId: 'smoke_test',
+            },
+          }),
+        ) as { entity: { id: string }; revision: { id: string } };
         const smokeTask = taskSchema.parse(
           await core.request({
             method: 'task.create',
@@ -483,6 +557,8 @@ void app
               plannerProviderId: 'fake',
               plannerModel: 'fake-text-v1',
               requiresApproval: false,
+              mediaKind: 'image',
+              targetShotId: shotCommit.entity.id,
             },
           }),
         );
@@ -492,6 +568,18 @@ void app
         if (completedTask.status !== 'succeeded') {
           throw new Error(`Smoke task did not succeed: ${completedTask.status}`);
         }
+        const takes = takeRecordSchema
+          .array()
+          .parse(
+            await core.request({ method: 'take.list', params: { shotId: shotCommit.entity.id } }),
+          );
+        const firstTake = takes[0];
+        if (!firstTake) throw new Error('Smoke task did not create a Take');
+        evaluationRecordSchema
+          .array()
+          .parse(
+            await core.request({ method: 'evaluation.list', params: { takeId: firstTake.id } }),
+          );
         await core.request({ method: 'project.close', params: {} });
       } finally {
         await rm(temporaryRoot, { recursive: true, force: true });

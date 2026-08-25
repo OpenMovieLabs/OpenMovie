@@ -159,4 +159,56 @@ describe('ProjectStore', () => {
     );
     await project.close();
   });
+
+  it('tracks generated Takes, evaluations, and selection as a Movie Revision', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-takes-'));
+    const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Takes' });
+    const scene = await project.movies.createScene({
+      title: 'Opening',
+      expectedRevisionId: project.revisions.currentRevisionId(),
+      authorId: 'user_local',
+    });
+    const shot = await project.movies.createShot({
+      sceneId: scene.entity.id,
+      durationUs: 2_000_000,
+      expectedRevisionId: scene.revision.id,
+      authorId: 'user_local',
+    });
+    const object = await project.objects.importBytes(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1]),
+      'take.png',
+    );
+    const take = await project.media.createTake({
+      shotId: shot.entity.id,
+      object,
+      runId: 'task_test',
+      provider: { providerId: 'fake', model: 'fake-image-v1' },
+      generation: { requestHash: 'request_hash' },
+    });
+    project.media.recordEvaluation({
+      takeId: take.id,
+      evaluator: 'test.rules',
+      status: 'passed',
+      score: 1,
+      findings: [],
+      provenance: { deterministic: true },
+    });
+
+    expect(project.media.listTakes(shot.entity.id)[0]).toMatchObject({
+      id: take.id,
+      artifact: { mimeType: 'image/png', objectUri: object.uri },
+    });
+    expect(project.media.listEvaluations(take.id)[0]).toMatchObject({
+      status: 'passed',
+      score: 1,
+    });
+    const selected = await project.media.selectTake({
+      takeId: take.id,
+      expectedRevisionId: shot.revision.id,
+      authorId: 'user_local',
+    });
+    expect(selected.shot.selected_take).toBe(take.id);
+    expect(selected.revisionId).toBe(project.revisions.currentRevisionId());
+    await project.close();
+  });
 });

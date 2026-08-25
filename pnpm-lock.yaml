@@ -49,6 +49,9 @@ importers:
       '@openmovie/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@openmovie/eval-engine':
+        specifier: workspace:*
+        version: link:../../packages/eval-engine
       '@openmovie/movie-ir':
         specifier: workspace:*
         version: link:../../packages/movie-ir
@@ -174,6 +177,16 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/eval-engine:
+    dependencies:
+      '@openmovie/movie-ir':
+        specifier: workspace:*
+        version: link:../movie-ir
     devDependencies:
       typescript:
         specifier: 6.0.3
