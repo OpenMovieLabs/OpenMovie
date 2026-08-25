@@ -740,7 +740,7 @@ MVP 聚焦一个 3–10 镜头短场景：
 - OpenMovie Embedded/Direct Adapter：保证没有外部 Harness 时仍可使用。
 - Codex Adapter：桌面内的结构化本地集成。
 - OpenMovie MCP Server：让外部 Codex 或 Claude Code 调用 OpenMovie。
-- Claude Code Embedded Adapter：在其稳定、可验证的结构化接口完成适配后启用，不解析交互式 TUI。
+- Claude Code Adapter：使用公开非交互 print mode 和 JSON Schema 输出，以只读方式生成与 Direct Agent 相同的待审 Proposal；不解析交互式 TUI。
 
 ### 16.4 MVP Provider
 

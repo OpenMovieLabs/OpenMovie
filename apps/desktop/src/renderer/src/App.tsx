@@ -1291,6 +1291,9 @@ export function App(): React.JSX.Element {
                 {harnesses.some((harness) => harness.id === 'codex' && harness.available) && (
                   <option value="harness:codex">Local Codex Harness</option>
                 )}
+                {harnesses.some((harness) => harness.id === 'claude_code' && harness.available) && (
+                  <option value="harness:claude_code">Local Claude Code Harness</option>
+                )}
                 {providers
                   .filter(
                     (provider) =>

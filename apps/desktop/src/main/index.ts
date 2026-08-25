@@ -502,6 +502,9 @@ void app
         if (plannerProviderId === 'harness:codex') {
           providerId = 'harness:codex';
           model = 'codex-local';
+        } else if (plannerProviderId === 'harness:claude_code') {
+          providerId = 'harness:claude_code';
+          model = 'claude-code-local';
         } else if (typeof plannerProviderId === 'string' && plannerProviderId !== 'fake') {
           if (!secrets) throw new Error('Secret Store is unavailable');
           const profile = secrets

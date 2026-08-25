@@ -276,6 +276,14 @@ Agent 输出一律不可信：
 - 取消后终止完整进程树。
 - Harness 版本和可执行文件路径进入诊断，不进入 Project。
 
+Desktop 规划模式的额外约束：
+
+- Codex App Server 使用 `readOnly` Sandbox、`never` Approval Policy，并只暴露项目摘要与实体列表 Tool。
+- Claude Code 使用非交互 print mode、Plan permission mode、`Read`/`Glob`/`Grep` 工具白名单，并显式拒绝 MCP Tool。
+- Claude Code Prompt 通过 stdin 传入，避免目标文本出现在进程命令行；子进程只继承运行、认证、代理和证书所需的环境变量白名单。
+- stdout 上限 10 MiB，stderr 上限 1 MiB，默认超时 10 分钟；stderr 不进入用户可见错误、Task 输出或 Project。
+- Harness 输出必须通过 `agentPlanSchema`，只形成 Proposal；用户接受前不会修改 Movie IR。
+
 ## 17. Plugin
 
 Plugin Manifest 声明：

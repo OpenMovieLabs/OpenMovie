@@ -558,15 +558,17 @@ Codex 深度集成采用本地 App Server：
 
 ### 11.4 Claude Code Adapter
 
-Claude Code 适配遵守相同原则：
+Claude Code 采用其公开 CLI 非交互 print mode：
 
-- 只采用供应商公开、结构化、可版本探测的 SDK、headless 或协议接口。
-- 不解析交互式 TUI、ANSI 输出或模拟键盘。
-- 认证由 Claude Code 自己管理，OpenMovie 只展示连接状态。
-- 将能力、事件、审批和取消归一化。
-- 若本机接口不满足可靠嵌入要求，先支持“Claude Code 通过 OpenMovie MCP Server 调用工程”，不承诺 Desktop 内嵌会话。
+- 使用 `claude -p` 和 JSON output，不解析交互式 TUI、ANSI 输出或模拟键盘。
+- 使用 `--json-schema` 约束 `OPENMOVIE_PLAN_V1`，Core 再以同一 `agentPlanSchema` 做信任边界校验。
+- 使用 Plan permission mode，Tool 限制为 `Read`、`Glob`、`Grep`，并拒绝 MCP Tool；它只能检查 Movie IR，不能直接修改项目。
+- Prompt 从 stdin 传入；工作目录固定为当前 Project；环境变量采用显式白名单。
+- 禁用 Session 持久化和浏览器集成，限制最大 Turn、stdout/stderr 大小和执行时间，并支持 AbortSignal 取消。
+- 认证仍由 Claude Code 自己管理，OpenMovie 不读取其凭据文件。
+- 结构化计划进入统一 Proposal 流程，用户接受时才由 Core 原子写入一个 Revision。
 
-具体传输、版本范围和认证方式在实现该 Adapter 时通过单独 ADR 对照当时官方接口确定。
+外部 Claude Code 仍可在 Desktop 未持有项目写锁时，通过 OpenMovie MCP Server 使用更完整的工程 Tool Surface。
 
 ### 11.5 Direct/Embedded Adapter
 
@@ -1506,11 +1508,12 @@ interface PublicError {
 
 - Agent Gateway 完整事件模型。
 - Codex App Server stdio Adapter。
+- Claude Code 非交互结构化规划 Adapter。
 - OpenMovie MCP Server。
 - Harness 检测、登录状态、取消与恢复。
 - 外部 Harness Revision Proposal。
 
-退出标准：Codex 可以在 Desktop 内驱动任务，外部兼容 Harness 可以通过 MCP 修改工程。
+退出标准：Codex 与 Claude Code 可以在 Desktop 内产生可审查 Proposal，外部兼容 Harness 可以通过 MCP 修改工程。
 
 ### Phase 3：电影工程闭环
 
@@ -1527,7 +1530,7 @@ interface PublicError {
 
 - 安装、签名、自动更新和崩溃恢复。
 - 大项目性能和磁盘管理。
-- Claude Code Adapter 或明确的 MCP-only 支持级别。
+- Claude Code Adapter 跨平台兼容矩阵与回归 Fixture。
 - 插件开发体验。
 - 隐私、诊断和发布文档。
 
@@ -1637,7 +1640,7 @@ ADR 是架构选择的事实来源。本节只提供导航；若后续改变 Acc
 - Timeline MVP 采用现有组件还是自研最小渲染层。
 - FFmpeg 分发许可、编码器范围和安装包体积。
 - Codex App Server 协议版本探测和兼容测试策略。
-- Claude Code 可用于 Desktop 深度嵌入的正式结构化接口。
+- Claude Code CLI 版本变化对 print mode、JSON Schema、Plan 权限和取消语义的兼容矩阵。
 - OpenRouter 和其他 OpenAI-compatible Provider 的兼容测试矩阵。
 - Direct Adapter 对 Tool Calling、Structured Output 和纯文本 Model 的分级支持。
 - 自定义 HTTP 声明式映射的安全边界。
@@ -1671,6 +1674,7 @@ ADR 是架构选择的事实来源。本节只提供导航；若后续改变 Acc
 
 - [Codex App Server — official OpenAI documentation](https://learn.chatgpt.com/docs/app-server)：用于确认产品内深度集成、认证、会话、审批、流式事件、JSON-RPC 与本地 stdio 边界。
 - [Create a model response — official OpenAI API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)：用于确认文本、图片和文件输入、结构化文本/JSON 输出及自定义 Tool 等多模态协议基线。
+- [Claude Code CLI reference — official Anthropic documentation](https://code.claude.com/docs/en/cli-usage)：用于确认 print mode、JSON output、JSON Schema、Plan permission mode、Tool 白名单与非持久 Session 参数。
 - [Electron safeStorage — official Electron documentation](https://www.electronjs.org/docs/latest/api/safe-storage)：用于确认 macOS Keychain、Windows DPAPI 以及异步加解密边界。
 
 第三方 Harness 的具体 Adapter 在实现时必须重新核对其当时的官方接口和许可。本方案只固定 OpenMovie 的 Adapter Contract，不把未经确认的第三方行为写成稳定事实。

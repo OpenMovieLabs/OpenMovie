@@ -78,7 +78,7 @@ Version tags such as `v0.1.0` trigger signed-ready Windows and macOS packaging i
 
 ### Agent Harnesses and MCP
 
-OpenMovie Desktop detects a local Codex installation and can use its official App Server as a read-only planning harness. OpenMovie exposes typed dynamic tools for project inspection and Revision-safe Scene/Shot creation; all writes still pass through Core.
+OpenMovie Desktop detects local Codex and Claude Code installations. Codex runs through its App Server with project-scoped read tools; Claude Code runs in non-interactive print mode with structured JSON output, Plan permission mode, and only `Read`, `Glob`, and `Grep`. Both produce the same reviewable `OPENMOVIE_PLAN_V1` proposal, and neither planning path can commit Movie IR changes directly. Accepting a proposal creates one atomic Revision through Core.
 
 For external Codex, Claude Code, or any MCP host, start the standalone stdio server while the project is not open in Desktop:
 

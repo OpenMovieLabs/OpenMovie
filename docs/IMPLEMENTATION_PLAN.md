@@ -25,7 +25,7 @@ Desktop 启动
 
 每个后续阶段都保持这条主路径可运行。
 
-当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 H.264 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、Provider 无费用连通性检查、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、Direct Agent 受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
+当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 H.264 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、Claude Code 结构化只读规划、MCP、加密 Provider Secret、Provider 无费用连通性检查、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、统一受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
 
 ## 2. 工程约束
 
@@ -279,12 +279,15 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 
 ### 8.4 Claude Code
 
-- MVP 先通过 MCP 验证外部调用。
-- Desktop Embedded Adapter 只有在正式结构化接口、认证和取消语义验证后进入。
+- [x] 外部 Claude Code 可通过 MCP 调用 OpenMovie。
+- [x] Desktop 使用公开非交互 print mode，不解析交互 TUI。
+- [x] JSON Schema 结构化输出、Plan permission mode、只读工具白名单。
+- [x] Prompt 通过 stdin 传入，子进程环境变量使用白名单。
+- [x] 超时、取消、输出大小上限和稳定错误归一化。
 
 ### 8.5 Exit Criteria
 
-- Codex 在 Desktop 内驱动与 Direct Agent 相同的 Project Tool。
+- Codex 与 Claude Code 在 Desktop 内产生与 Direct Agent 相同的受限 Revision Proposal。
 - 外部 Harness 通过 MCP 创建 Revision Proposal。
 - 切换 Harness 不丢失 Task 结构化状态。
 - Harness 崩溃不会损坏 Project。
