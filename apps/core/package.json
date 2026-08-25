@@ -14,6 +14,7 @@
   "devDependencies": {
     "@openmovie/contracts": "workspace:*",
     "@openmovie/agent-gateway": "workspace:*",
+    "@openmovie/movie-ir": "workspace:*",
     "@openmovie/provider-gateway": "workspace:*",
     "@openmovie/project-store": "workspace:*",
     "@openmovie/task-engine": "workspace:*",

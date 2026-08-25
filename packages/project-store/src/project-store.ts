@@ -16,6 +16,7 @@ import type Database from 'better-sqlite3';
 import { openProjectDatabase } from './database.js';
 import { writeFileAtomic } from './fs.js';
 import { ProjectLock } from './lock.js';
+import { MovieWorkspace } from './movie-workspace.js';
 import { ObjectStore } from './object-store.js';
 import { RevisionEngine } from './revision.js';
 import { SqliteTaskPersistence } from './task-persistence.js';
@@ -39,6 +40,7 @@ export class ProjectStore {
   readonly objects: ObjectStore;
   readonly revisions: RevisionEngine;
   readonly taskPersistence: SqliteTaskPersistence;
+  readonly movies: MovieWorkspace;
 
   private closed = false;
 
@@ -53,6 +55,7 @@ export class ProjectStore {
     this.objects = new ObjectStore(this.metadataRoot);
     this.revisions = new RevisionEngine(root, manifest.project.id, database);
     this.taskPersistence = new SqliteTaskPersistence(database);
+    this.movies = new MovieWorkspace(root, this.revisions);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {
@@ -70,6 +73,7 @@ export class ProjectStore {
         root,
         join(root, 'story'),
         join(root, 'characters'),
+        join(root, 'locations'),
         join(root, 'scenes'),
         join(root, 'shots'),
         join(root, 'timeline'),
@@ -150,6 +154,7 @@ export class ProjectStore {
           .run(initialRevision, manifest.project.id, manifestYaml, manifestHash, now);
       })();
       const store = new ProjectStore(root, manifest, database, lock);
+      await store.revisions.initializeCurrentSnapshot();
       await store.objects.initialize();
       return store;
     } catch (error) {
@@ -170,6 +175,7 @@ export class ProjectStore {
       const database = openProjectDatabase(join(metadataRoot, 'state.sqlite'));
       const store = new ProjectStore(root, manifest, database, lock);
       await store.revisions.recover();
+      await store.revisions.initializeCurrentSnapshot();
       await store.objects.initialize();
       return store;
     } catch (error) {

@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 
 import {
   PROTOCOL_VERSION,
+  branchRecordSchema,
   coreHealthSchema,
   harnessHealthSchema,
   initializeResultSchema,
@@ -12,6 +13,7 @@ import {
   taskSchema,
   taskEventSchema,
 } from '@openmovie/contracts';
+import { movieEntitySchema } from '@openmovie/movie-ir';
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 
 import { CoreClient } from './core-client.js';
@@ -34,6 +36,21 @@ function supportedPlatform(): 'darwin' | 'win32' | 'linux' {
 function coreEntry(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'core', 'main.cjs');
   return resolve(app.getAppPath(), '../core/dist/main.cjs');
+}
+
+function parseEntityCommit(value: unknown): unknown {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('entity' in value) ||
+    !('revision' in value)
+  ) {
+    throw new Error('Core returned an invalid entity commit');
+  }
+  return {
+    entity: movieEntitySchema.parse(value.entity),
+    revision: revisionRecordSchema.parse(value.revision),
+  };
 }
 
 function createWindow(): BrowserWindow {
@@ -188,6 +205,115 @@ void app
         await core?.request({ method: 'project.get_summary', params: {} }),
       );
     });
+    ipcMain.handle('openmovie:branch-list', async () =>
+      branchRecordSchema
+        .array()
+        .parse(await core?.request({ method: 'revision.branch_list', params: {} })),
+    );
+    ipcMain.handle('openmovie:branch-create', async (_event, name: unknown) => {
+      if (typeof name !== 'string' || name.trim().length === 0)
+        throw new Error('Branch name is required');
+      return branchRecordSchema.parse(
+        await core?.request({ method: 'revision.branch_create', params: { name: name.trim() } }),
+      );
+    });
+    ipcMain.handle('openmovie:branch-switch', async (_event, name: unknown) => {
+      if (typeof name !== 'string') throw new Error('Branch name is required');
+      const branch = branchRecordSchema.parse(
+        await core?.request({ method: 'revision.branch_switch', params: { name } }),
+      );
+      return {
+        branch,
+        project: projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        ),
+        revisions: revisionRecordSchema
+          .array()
+          .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
+      };
+    });
+    ipcMain.handle('openmovie:entity-list', async (_event, kind: unknown) => {
+      if (kind !== 'character' && kind !== 'scene' && kind !== 'shot') {
+        throw new Error('Invalid entity kind');
+      }
+      return movieEntitySchema
+        .array()
+        .parse(await core?.request({ method: 'movie.entity_list', params: { kind } }));
+    });
+    ipcMain.handle(
+      'openmovie:character-create',
+      async (_event, name: unknown, appearance: unknown) => {
+        if (typeof name !== 'string' || name.trim().length === 0)
+          throw new Error('Character name is required');
+        const summary = projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        );
+        return parseEntityCommit(
+          await core?.request({
+            method: 'movie.character_create',
+            params: {
+              name: name.trim(),
+              expectedRevisionId: summary.currentRevisionId,
+              authorId: 'user_local',
+              ...(typeof appearance === 'string' && appearance.trim()
+                ? { appearance: appearance.trim() }
+                : {}),
+            },
+          }),
+        );
+      },
+    );
+    ipcMain.handle('openmovie:scene-create', async (_event, title: unknown, storyGoal: unknown) => {
+      if (typeof title !== 'string' || title.trim().length === 0)
+        throw new Error('Scene title is required');
+      const summary = projectSummarySchema.parse(
+        await core?.request({ method: 'project.get_summary', params: {} }),
+      );
+      return parseEntityCommit(
+        await core?.request({
+          method: 'movie.scene_create',
+          params: {
+            title: title.trim(),
+            expectedRevisionId: summary.currentRevisionId,
+            authorId: 'user_local',
+            ...(typeof storyGoal === 'string' && storyGoal.trim()
+              ? { storyGoal: storyGoal.trim() }
+              : {}),
+          },
+        }),
+      );
+    });
+    ipcMain.handle(
+      'openmovie:shot-create',
+      async (
+        _event,
+        sceneId: unknown,
+        durationUs: unknown,
+        framing: unknown,
+        movement: unknown,
+      ) => {
+        if (typeof sceneId !== 'string' || typeof durationUs !== 'number')
+          throw new Error('Scene and duration are required');
+        const summary = projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        );
+        return parseEntityCommit(
+          await core?.request({
+            method: 'movie.shot_create',
+            params: {
+              sceneId,
+              durationUs,
+              expectedRevisionId: summary.currentRevisionId,
+              authorId: 'user_local',
+              ...(typeof framing === 'string' && framing.trim() ? { framing: framing.trim() } : {}),
+              ...(typeof movement === 'string' && movement.trim()
+                ? { movement: movement.trim() }
+                : {}),
+            },
+          }),
+        );
+      },
+    );
     ipcMain.handle(
       'openmovie:task-run',
       async (_event, goal: unknown, plannerProviderId: unknown, requiresApproval: unknown) => {

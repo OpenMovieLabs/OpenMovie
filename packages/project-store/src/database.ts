@@ -89,6 +89,33 @@ const migrations = [
         ON task_events(task_id, sequence);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE projects ADD COLUMN current_branch TEXT NOT NULL DEFAULT 'main';
+      ALTER TABLE revisions ADD COLUMN branch TEXT NOT NULL DEFAULT 'main';
+      CREATE TABLE IF NOT EXISTS revision_files (
+        revision_id TEXT NOT NULL REFERENCES revisions(id) ON DELETE CASCADE,
+        relative_path TEXT NOT NULL,
+        content TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        PRIMARY KEY(revision_id, relative_path)
+      );
+      CREATE INDEX IF NOT EXISTS revision_files_hash
+        ON revision_files(content_hash);
+      CREATE TABLE IF NOT EXISTS branches (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        head_revision_id TEXT NOT NULL REFERENCES revisions(id),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(project_id, name)
+      );
+      INSERT OR IGNORE INTO branches(project_id, name, head_revision_id, created_at, updated_at)
+        SELECT id, 'main', current_revision_id, created_at, updated_at
+        FROM projects WHERE current_revision_id IS NOT NULL;
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

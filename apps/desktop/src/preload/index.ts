@@ -1,5 +1,6 @@
 import type {
   CoreHealth,
+  BranchRecord,
   HarnessHealth,
   InitializeResult,
   ProjectSummary,
@@ -7,6 +8,7 @@ import type {
   Task,
   TaskEvent,
 } from '@openmovie/contracts';
+import type { Character, MovieEntity, Scene, Shot } from '@openmovie/movie-ir';
 import { contextBridge, ipcRenderer } from 'electron';
 
 export type OpenMovieDesktopApi = {
@@ -19,6 +21,18 @@ export type OpenMovieDesktopApi = {
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
+  listBranches: () => Promise<BranchRecord[]>;
+  createBranch: (name: string) => Promise<BranchRecord>;
+  switchBranch: (name: string) => Promise<BranchSwitchResult>;
+  listEntities: (kind: 'character' | 'scene' | 'shot') => Promise<MovieEntity[]>;
+  createCharacter: (name: string, appearance?: string) => Promise<EntityCommitResult<Character>>;
+  createScene: (title: string, storyGoal?: string) => Promise<EntityCommitResult<Scene>>;
+  createShot: (
+    sceneId: string,
+    durationUs: number,
+    framing?: string,
+    movement?: string,
+  ) => Promise<EntityCommitResult<Shot>>;
   runTask: (
     goal: string,
     plannerProviderId?: string,
@@ -37,6 +51,17 @@ export type OpenMovieDesktopApi = {
 
 export type TaskRunResult = {
   task: Task;
+  project: ProjectSummary;
+  revisions: RevisionRecord[];
+};
+
+export type EntityCommitResult<T extends MovieEntity> = {
+  entity: T;
+  revision: RevisionRecord;
+};
+
+export type BranchSwitchResult = {
+  branch: BranchRecord;
   project: ProjectSummary;
   revisions: RevisionRecord[];
 };
@@ -79,6 +104,25 @@ const api: OpenMovieDesktopApi = {
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,
   restoreRevision: (revisionId) =>
     ipcRenderer.invoke('openmovie:revision-restore', revisionId) as Promise<ProjectSummary>,
+  listBranches: () => ipcRenderer.invoke('openmovie:branch-list') as Promise<BranchRecord[]>,
+  createBranch: (name) =>
+    ipcRenderer.invoke('openmovie:branch-create', name) as Promise<BranchRecord>,
+  switchBranch: (name) =>
+    ipcRenderer.invoke('openmovie:branch-switch', name) as Promise<BranchSwitchResult>,
+  listEntities: (kind) =>
+    ipcRenderer.invoke('openmovie:entity-list', kind) as Promise<MovieEntity[]>,
+  createCharacter: (name, appearance) =>
+    ipcRenderer.invoke('openmovie:character-create', name, appearance) as Promise<
+      EntityCommitResult<Character>
+    >,
+  createScene: (title, storyGoal) =>
+    ipcRenderer.invoke('openmovie:scene-create', title, storyGoal) as Promise<
+      EntityCommitResult<Scene>
+    >,
+  createShot: (sceneId, durationUs, framing, movement) =>
+    ipcRenderer.invoke('openmovie:shot-create', sceneId, durationUs, framing, movement) as Promise<
+      EntityCommitResult<Shot>
+    >,
   runTask: (goal, plannerProviderId, requiresApproval) =>
     ipcRenderer.invoke(
       'openmovie:task-run',

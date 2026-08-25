@@ -83,6 +83,76 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('revision.branch_list'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('revision.branch_create'),
+    params: z.object({ name: z.string().min(1).max(64) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('revision.branch_switch'),
+    params: z.object({ name: z.string().min(1).max(64) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('movie.entity_list'),
+    params: z.object({ kind: z.enum(['character', 'scene', 'shot']) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('movie.character_create'),
+    params: z.object({
+      name: z.string().trim().min(1).max(200),
+      appearance: z.string().max(5000).optional(),
+      expectedRevisionId: z.string().nullable(),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('movie.scene_create'),
+    params: z.object({
+      title: z.string().trim().min(1).max(200),
+      storyGoal: z.string().max(10_000).optional(),
+      expectedRevisionId: z.string().nullable(),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('movie.shot_create'),
+    params: z.object({
+      sceneId: z.string().min(1),
+      durationUs: z.number().int().positive(),
+      framing: z.string().max(200).optional(),
+      movement: z.string().max(200).optional(),
+      expectedRevisionId: z.string().nullable(),
+      authorId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('movie.entity_update'),
+    params: z.object({
+      entity: z
+        .object({
+          id: z.string().min(1),
+          type: z.enum(['character', 'scene', 'shot', 'timeline']),
+          revision: z.number().int().nonnegative(),
+        })
+        .passthrough(),
+      expectedEntityRevision: z.number().int().nonnegative(),
+      expectedRevisionId: z.string().nullable(),
+      authorType: z.enum(['user', 'agent', 'system']),
+      authorId: z.string().min(1),
+      message: z.string().trim().min(1).max(500),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('object.import'),
     params: z.object({ path: z.string().min(1) }),
   }),
@@ -174,6 +244,7 @@ export const projectSummarySchema = z.object({
   root: z.string(),
   locale: z.string(),
   currentRevisionId: z.string().nullable(),
+  currentBranch: z.string(),
   delivery: z.object({
     width: z.number().int(),
     height: z.number().int(),
@@ -189,7 +260,17 @@ export const revisionRecordSchema = z.object({
   message: z.string(),
   patch: z.array(moviePatchOperationSchema),
   manifestHash: z.string(),
+  changedPaths: z.array(z.string()),
+  branch: z.string(),
   createdAt: z.string().datetime(),
+});
+
+export const branchRecordSchema = z.object({
+  name: z.string(),
+  headRevisionId: z.string(),
+  current: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 });
 
 export const storedObjectSchema = z.object({
@@ -271,6 +352,7 @@ export type CoreHealth = z.infer<typeof coreHealthSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type MoviePatchOperation = z.infer<typeof moviePatchOperationSchema>;
 export type RevisionRecord = z.infer<typeof revisionRecordSchema>;
+export type BranchRecord = z.infer<typeof branchRecordSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEvent = z.infer<typeof taskEventSchema>;

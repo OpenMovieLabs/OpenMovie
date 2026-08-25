@@ -4,6 +4,7 @@ import {
   Clapperboard,
   Clock3,
   FolderOpen,
+  GitBranch,
   History,
   Plus,
   Settings,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import type {
+  BranchRecord,
   CoreHealth,
   HarnessHealth,
   InitializeResult,
@@ -18,6 +20,7 @@ import type {
   RevisionRecord,
   Task,
 } from '@openmovie/contracts';
+import type { Character, Scene, Shot } from '@openmovie/movie-ir';
 import type { ProviderProfile } from '../../preload/index.js';
 
 type RuntimeState =
@@ -25,12 +28,20 @@ type RuntimeState =
   | { kind: 'ready'; initialize: InitializeResult; health: CoreHealth }
   | { kind: 'error'; message: string };
 
+type ProjectSection =
+  'Overview' | 'Story' | 'Characters' | 'Scenes' | 'Shots' | 'Timeline' | 'Tests';
+
 export function App(): React.JSX.Element {
   const initialized = useRef(false);
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' });
   const [harnesses, setHarnesses] = useState<HarnessHealth[]>([]);
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
+  const [branches, setBranches] = useState<BranchRecord[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [section, setSection] = useState<ProjectSection>('Overview');
   const [showCreate, setShowCreate] = useState(false);
   const [showTask, setShowTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -45,6 +56,15 @@ export function App(): React.JSX.Element {
   });
   const [plannerProviderId, setPlannerProviderId] = useState('fake');
   const [requiresApproval, setRequiresApproval] = useState(false);
+  const [branchName, setBranchName] = useState('visual-experiment');
+  const [characterName, setCharacterName] = useState('');
+  const [characterAppearance, setCharacterAppearance] = useState('');
+  const [sceneTitle, setSceneTitle] = useState('');
+  const [sceneGoal, setSceneGoal] = useState('');
+  const [shotSceneId, setShotSceneId] = useState('');
+  const [shotDuration, setShotDuration] = useState('4');
+  const [shotFraming, setShotFraming] = useState('wide');
+  const [shotMovement, setShotMovement] = useState('');
   const [title, setTitle] = useState('Untitled Movie');
   const [goal, setGoal] = useState('Create a cinematic establishing frame for the opening scene');
   const [lastTask, setLastTask] = useState<Task | null>(null);
@@ -87,8 +107,23 @@ export function App(): React.JSX.Element {
   const loadProject = async (summary: ProjectSummary): Promise<void> => {
     setProject(summary);
     setTitle(summary.title);
-    setRevisions(await window.openMovie.listRevisions());
-    const tasks = await window.openMovie.listTasks();
+    const [nextRevisions, tasks, nextBranches, nextCharacters, nextScenes, nextShots] =
+      await Promise.all([
+        window.openMovie.listRevisions(),
+        window.openMovie.listTasks(),
+        window.openMovie.listBranches(),
+        window.openMovie.listEntities('character'),
+        window.openMovie.listEntities('scene'),
+        window.openMovie.listEntities('shot'),
+      ]);
+    setRevisions(nextRevisions);
+    setBranches(nextBranches);
+    setCharacters(
+      nextCharacters.filter((entity): entity is Character => entity.type === 'character'),
+    );
+    setScenes(nextScenes.filter((entity): entity is Scene => entity.type === 'scene'));
+    setShots(nextShots.filter((entity): entity is Shot => entity.type === 'shot'));
+    setShotSceneId((current) => current || (nextScenes[0]?.id ?? ''));
     setLastTask(tasks.at(-1) ?? null);
   };
 
@@ -115,6 +150,51 @@ export function App(): React.JSX.Element {
 
   const restoreRevision = (revisionId: string): void => {
     void run(async () => loadProject(await window.openMovie.restoreRevision(revisionId)));
+  };
+
+  const createBranch = (): void => {
+    void run(async () => {
+      await window.openMovie.createBranch(branchName);
+      setBranches(await window.openMovie.listBranches());
+    });
+  };
+
+  const switchBranch = (name: string): void => {
+    void run(async () => {
+      const result = await window.openMovie.switchBranch(name);
+      await loadProject(result.project);
+    });
+  };
+
+  const createCharacter = (): void => {
+    void run(async () => {
+      await window.openMovie.createCharacter(characterName, characterAppearance);
+      setCharacterName('');
+      setCharacterAppearance('');
+      if (project) await loadProject(await window.openMovie.getProjectSummary());
+    });
+  };
+
+  const createScene = (): void => {
+    void run(async () => {
+      const result = await window.openMovie.createScene(sceneTitle, sceneGoal);
+      setSceneTitle('');
+      setSceneGoal('');
+      setShotSceneId(result.entity.id);
+      if (project) await loadProject(await window.openMovie.getProjectSummary());
+    });
+  };
+
+  const createShot = (): void => {
+    void run(async () => {
+      await window.openMovie.createShot(
+        shotSceneId,
+        Math.round(Number(shotDuration) * 1_000_000),
+        shotFraming,
+        shotMovement,
+      );
+      if (project) await loadProject(await window.openMovie.getProjectSummary());
+    });
   };
 
   const runTask = (): void => {
@@ -179,14 +259,18 @@ export function App(): React.JSX.Element {
         <main className="project-workspace">
           <aside className="project-nav">
             <div className="nav-label">PROJECT</div>
-            {['Overview', 'Story', 'Characters', 'Scenes', 'Shots', 'Timeline', 'Tests'].map(
-              (item, index) => (
-                <button key={item} className={index === 0 ? 'nav-item active' : 'nav-item'}>
-                  {item}
-                  <ChevronRight size={14} />
-                </button>
-              ),
-            )}
+            {(
+              ['Overview', 'Story', 'Characters', 'Scenes', 'Shots', 'Timeline', 'Tests'] as const
+            ).map((item) => (
+              <button
+                key={item}
+                className={section === item ? 'nav-item active' : 'nav-item'}
+                onClick={() => setSection(item)}
+              >
+                {item}
+                <ChevronRight size={14} />
+              </button>
+            ))}
           </aside>
           <section className="project-main">
             <div className="project-heading">
@@ -204,10 +288,26 @@ export function App(): React.JSX.Element {
                     if (event.key === 'Enter') renameProject();
                   }}
                 />
-                <p>
-                  {project.delivery.width} × {project.delivery.height} · {project.locale} ·{' '}
-                  {project.root}
-                </p>
+                <div className="project-meta">
+                  <span>
+                    {project.delivery.width} × {project.delivery.height} · {project.locale}
+                  </span>
+                  <label className="branch-picker">
+                    <GitBranch size={13} />
+                    <select
+                      value={project.currentBranch}
+                      onChange={(event) => switchBranch(event.target.value)}
+                      disabled={busy}
+                    >
+                      {branches.map((branch) => (
+                        <option key={branch.name} value={branch.name}>
+                          {branch.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span>{project.root}</span>
+                </div>
               </div>
               <button className="primary" disabled={busy} onClick={openTask}>
                 <Sparkles size={17} /> Give OpenMovie a task
@@ -215,48 +315,222 @@ export function App(): React.JSX.Element {
             </div>
 
             {error && <div className="error-banner">{error}</div>}
-            <div className="project-grid">
-              <article className="empty-stage">
-                <Clapperboard size={30} />
-                <h2>Start with the story</h2>
-                <p>
-                  {lastTask
-                    ? `Task ${lastTask.status}: ${lastTask.goal}`
-                    : 'Describe the film you want to make. OpenMovie will turn the idea into inspectable scenes and shots.'}
-                </p>
-                <button className="secondary">
-                  <Plus size={17} /> Add a scene
-                </button>
-                {lastTask?.status === 'awaiting_approval' && (
-                  <button className="primary" disabled={busy} onClick={approveTask}>
-                    Approve and continue
+            {section === 'Overview' ? (
+              <div className="project-grid">
+                <article className="empty-stage">
+                  <Clapperboard size={30} />
+                  <h2>Build the movie as structured intent</h2>
+                  <p>
+                    {lastTask
+                      ? `Task ${lastTask.status}: ${lastTask.goal}`
+                      : `${characters.length} characters · ${scenes.length} scenes · ${shots.length} shots`}
+                  </p>
+                  <button className="secondary" onClick={() => setSection('Scenes')}>
+                    <Plus size={17} /> Add a scene
                   </button>
-                )}
-              </article>
-              <article className="history-panel">
-                <div className="panel-title">
-                  <History size={17} /> Revisions
-                </div>
-                <div className="revision-list">
-                  {revisions.map((revision) => (
-                    <div className="revision-row" key={revision.id}>
-                      <span className="revision-node" />
-                      <div>
-                        <strong>{revision.message}</strong>
-                        <span>
-                          <Clock3 size={12} /> {new Date(revision.createdAt).toLocaleString()}
-                        </span>
+                  {lastTask?.status === 'awaiting_approval' && (
+                    <button className="primary" disabled={busy} onClick={approveTask}>
+                      Approve and continue
+                    </button>
+                  )}
+                </article>
+                <article className="history-panel">
+                  <div className="panel-title">
+                    <History size={17} /> Revisions
+                  </div>
+                  <div className="branch-create">
+                    <input
+                      aria-label="New branch name"
+                      value={branchName}
+                      onChange={(event) => setBranchName(event.target.value)}
+                    />
+                    <button disabled={busy || !branchName.trim()} onClick={createBranch}>
+                      Branch
+                    </button>
+                  </div>
+                  <div className="revision-list">
+                    {revisions.map((revision) => (
+                      <div className="revision-row" key={revision.id}>
+                        <span className="revision-node" />
+                        <div>
+                          <strong>{revision.message}</strong>
+                          <span>
+                            <Clock3 size={12} /> {revision.branch} ·{' '}
+                            {new Date(revision.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {revision.id !== project.currentRevisionId && (
+                          <button disabled={busy} onClick={() => restoreRevision(revision.id)}>
+                            Restore
+                          </button>
+                        )}
                       </div>
-                      {revision.id !== project.currentRevisionId && (
-                        <button disabled={busy} onClick={() => restoreRevision(revision.id)}>
-                          Restore
-                        </button>
-                      )}
+                    ))}
+                  </div>
+                </article>
+              </div>
+            ) : section === 'Characters' ? (
+              <div className="entity-workbench">
+                <article className="entity-list-panel">
+                  <span className="section-label">CHARACTERS</span>
+                  <h2>Identity is testable project data.</h2>
+                  {characters.map((character) => (
+                    <div className="entity-row" key={character.id}>
+                      <div>
+                        <strong>{character.name}</strong>
+                        <span>{character.identity.appearance || 'Appearance not defined'}</span>
+                      </div>
+                      <code>r{character.revision}</code>
                     </div>
                   ))}
-                </div>
+                </article>
+                <article className="entity-form">
+                  <h3>New character</h3>
+                  <label>
+                    Name
+                    <input
+                      value={characterName}
+                      onChange={(event) => setCharacterName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Appearance
+                    <textarea
+                      value={characterAppearance}
+                      onChange={(event) => setCharacterAppearance(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="primary"
+                    disabled={busy || !characterName.trim()}
+                    onClick={createCharacter}
+                  >
+                    Create character
+                  </button>
+                </article>
+              </div>
+            ) : section === 'Scenes' ? (
+              <div className="entity-workbench">
+                <article className="entity-list-panel">
+                  <span className="section-label">SCENES</span>
+                  <h2>Narrative units with explicit goals.</h2>
+                  {scenes.map((scene) => (
+                    <div className="entity-row" key={scene.id}>
+                      <div>
+                        <strong>
+                          {scene.order + 1}. {scene.title}
+                        </strong>
+                        <span>
+                          {scene.story_goal || 'Story goal not defined'} · {scene.shots.length}{' '}
+                          shots
+                        </span>
+                      </div>
+                      <code>r{scene.revision}</code>
+                    </div>
+                  ))}
+                </article>
+                <article className="entity-form">
+                  <h3>New scene</h3>
+                  <label>
+                    Title
+                    <input
+                      value={sceneTitle}
+                      onChange={(event) => setSceneTitle(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Story goal
+                    <textarea
+                      value={sceneGoal}
+                      onChange={(event) => setSceneGoal(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="primary"
+                    disabled={busy || !sceneTitle.trim()}
+                    onClick={createScene}
+                  >
+                    Create scene
+                  </button>
+                </article>
+              </div>
+            ) : section === 'Shots' ? (
+              <div className="entity-workbench">
+                <article className="entity-list-panel">
+                  <span className="section-label">SHOTS</span>
+                  <h2>Every generated take starts from inspectable intent.</h2>
+                  {shots.map((shot) => (
+                    <div className="entity-row" key={shot.id}>
+                      <div>
+                        <strong>{shot.camera.framing || 'Unspecified framing'}</strong>
+                        <span>
+                          {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
+                          {shot.camera.movement || 'static'} · {shot.scene}
+                        </span>
+                      </div>
+                      <code>r{shot.revision}</code>
+                    </div>
+                  ))}
+                </article>
+                <article className="entity-form">
+                  <h3>New shot</h3>
+                  <label>
+                    Scene
+                    <select
+                      value={shotSceneId}
+                      onChange={(event) => setShotSceneId(event.target.value)}
+                    >
+                      <option value="">Choose a scene</option>
+                      {scenes.map((scene) => (
+                        <option key={scene.id} value={scene.id}>
+                          {scene.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Duration (seconds)
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={shotDuration}
+                      onChange={(event) => setShotDuration(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Framing
+                    <input
+                      value={shotFraming}
+                      onChange={(event) => setShotFraming(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Movement
+                    <input
+                      value={shotMovement}
+                      onChange={(event) => setShotMovement(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="primary"
+                    disabled={busy || !shotSceneId || !(Number(shotDuration) > 0)}
+                    onClick={createShot}
+                  >
+                    Create shot
+                  </button>
+                </article>
+              </div>
+            ) : (
+              <article className="placeholder-panel">
+                <span className="section-label">{section.toUpperCase()}</span>
+                <h2>{section} workspace</h2>
+                <p>
+                  This source module is present in Movie IR and will gain its dedicated editor in
+                  the next build slice.
+                </p>
               </article>
-            </div>
+            )}
           </section>
         </main>
       ) : (

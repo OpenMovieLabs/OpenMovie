@@ -14,6 +14,7 @@ import {
 } from '@openmovie/provider-gateway';
 import { ClaudeCodeDetector, CodexAppServerAdapter } from '@openmovie/agent-gateway';
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
+import { movieEntitySchema } from '@openmovie/movie-ir';
 
 const startedAt = new Date();
 const coreVersion = '0.0.0';
@@ -143,6 +144,8 @@ export class CoreServer {
               'project.create',
               'project.open',
               'revision.commit',
+              'revision.branch',
+              'movie.entity',
               'object.import',
               'task.run',
               'task.approve',
@@ -202,6 +205,57 @@ export class CoreServer {
         );
         return { id: command.id, ok: true, result: revision };
       }
+      case 'revision.branch_list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().revisions.listBranches(),
+        };
+      case 'revision.branch_create':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().revisions.createBranch(command.params.name),
+        };
+      case 'revision.branch_switch':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().revisions.switchBranch(command.params.name),
+        };
+      case 'movie.entity_list':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.list(command.params.kind),
+        };
+      case 'movie.character_create':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.createCharacter(command.params),
+        };
+      case 'movie.scene_create':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.createScene(command.params),
+        };
+      case 'movie.shot_create':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.createShot(command.params),
+        };
+      case 'movie.entity_update':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().movies.update({
+            ...command.params,
+            entity: movieEntitySchema.parse(command.params.entity),
+          }),
+        };
       case 'object.import': {
         const object = await this.requireProject().objects.importFile(command.params.path);
         return { id: command.id, ok: true, result: object };
@@ -304,6 +358,7 @@ export class CoreServer {
       root: project.root,
       locale: manifest.project.default_locale,
       currentRevisionId: project.revisions.currentRevisionId(),
+      currentBranch: project.revisions.currentBranch(),
       delivery: {
         width: manifest.delivery.width,
         height: manifest.delivery.height,

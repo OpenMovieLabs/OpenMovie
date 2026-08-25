@@ -1,12 +1,18 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 
 import {
+  assetManifestSchema,
+  characterSchema,
   createId,
   parseProjectManifest,
+  parseYaml,
   projectManifestSchema,
+  sceneSchema,
   serializeProjectManifest,
+  shotSchema,
+  timelineSchema,
   type ProjectManifest,
 } from '@openmovie/movie-ir';
 import type Database from 'better-sqlite3';
@@ -28,6 +34,12 @@ export type CommitRevisionInput = {
   patch: MoviePatchOperation[];
 };
 
+export type MovieFileChange = { path: string; content: string };
+
+export type CommitFilesInput = Omit<CommitRevisionInput, 'patch'> & {
+  changes: MovieFileChange[];
+};
+
 export type RevisionRecord = {
   id: string;
   parentId: string | null;
@@ -36,11 +48,31 @@ export type RevisionRecord = {
   message: string;
   patch: MoviePatchOperation[];
   manifestHash: string;
+  changedPaths: string[];
+  branch: string;
   createdAt: string;
 };
 
+export type BranchRecord = {
+  name: string;
+  headRevisionId: string;
+  current: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SnapshotFile = { path: string; content: string; hash: string };
+
 function hash(content: string): string {
   return createHash('sha256').update(content).digest('hex');
+}
+
+function hashSnapshot(files: SnapshotFile[]): string {
+  const digest = createHash('sha256');
+  for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
+    digest.update(file.path).update('\0').update(file.hash).update('\0');
+  }
+  return digest.digest('hex');
 }
 
 function pointerParts(pointer: string): string[] {
@@ -55,6 +87,39 @@ function pointerParts(pointer: string): string[] {
       }
       return part;
     });
+}
+
+function normalizeMoviePath(path: string): string {
+  if (
+    path.length === 0 ||
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    path.split('/').some((part) => part === '' || part === '.' || part === '..')
+  ) {
+    throw new Error(`Invalid movie file path: ${path}`);
+  }
+  if (!path.endsWith('.yaml')) throw new Error(`Movie source files must be YAML: ${path}`);
+  if (path.startsWith('.openmovie/'))
+    throw new Error('Runtime metadata cannot be revised as Movie IR');
+  return path;
+}
+
+function validateMovieFile(path: string, content: string): void {
+  if (path === 'openmovie.yaml') {
+    parseProjectManifest(content);
+  } else if (path === 'assets/manifest.yaml') {
+    parseYaml(content, assetManifestSchema);
+  } else if (path.startsWith('characters/')) {
+    parseYaml(content, characterSchema);
+  } else if (path.startsWith('scenes/')) {
+    parseYaml(content, sceneSchema);
+  } else if (path.startsWith('shots/')) {
+    parseYaml(content, shotSchema);
+  } else if (path.startsWith('timeline/')) {
+    parseYaml(content, timelineSchema);
+  } else {
+    parseYaml(content, projectManifestSchema.partial().passthrough());
+  }
 }
 
 export function applyMoviePatch(
@@ -94,15 +159,14 @@ export function applyMoviePatch(
 }
 
 export class RevisionEngine {
-  private readonly manifestPath: string;
   private readonly journalDirectory: string;
+  private writeQueue = Promise.resolve();
 
   constructor(
     private readonly projectRoot: string,
     private readonly projectId: string,
     private readonly database: Database.Database,
   ) {
-    this.manifestPath = join(projectRoot, 'openmovie.yaml');
     this.journalDirectory = join(projectRoot, '.openmovie', 'temp');
   }
 
@@ -113,48 +177,103 @@ export class RevisionEngine {
     return row?.current_revision_id ?? null;
   }
 
-  async commit(input: CommitRevisionInput): Promise<RevisionRecord> {
-    const actualRevisionId = this.currentRevisionId();
-    if (actualRevisionId !== input.expectedRevisionId) {
-      throw new RevisionConflictError(input.expectedRevisionId, actualRevisionId);
-    }
-
-    const current = parseProjectManifest(await readFile(this.manifestPath, 'utf8'));
-    const next = applyMoviePatch(current, input.patch);
-    const snapshotYaml = serializeProjectManifest(next);
-    return this.persistRevision(input, actualRevisionId, snapshotYaml);
+  currentBranch(): string {
+    const row = this.database
+      .prepare('SELECT current_branch FROM projects WHERE id = ?')
+      .get(this.projectId) as { current_branch: string } | undefined;
+    return row?.current_branch ?? 'main';
   }
 
-  async restore(
+  async initializeCurrentSnapshot(): Promise<void> {
+    const revisionId = this.currentRevisionId();
+    if (!revisionId) return;
+    const existing = this.database
+      .prepare('SELECT COUNT(*) AS count FROM revision_files WHERE revision_id = ?')
+      .get(revisionId) as { count: number };
+    if (existing.count > 0) return;
+    const snapshot = await this.captureWorkingSnapshot();
+    const now = new Date().toISOString();
+    this.database.transaction(() => {
+      this.insertSnapshotFiles(revisionId, snapshot);
+      this.database
+        .prepare(
+          `INSERT OR IGNORE INTO branches(project_id, name, head_revision_id, created_at, updated_at)
+           VALUES (?, 'main', ?, ?, ?)`,
+        )
+        .run(this.projectId, revisionId, now, now);
+    })();
+  }
+
+  commit(input: CommitRevisionInput): Promise<RevisionRecord> {
+    return this.exclusive(async () => {
+      this.assertExpectedRevision(input.expectedRevisionId);
+      const snapshot = await this.captureWorkingSnapshot();
+      const root = snapshot.find((file) => file.path === 'openmovie.yaml');
+      if (!root) throw new Error('openmovie.yaml is missing');
+      root.content = serializeProjectManifest(
+        applyMoviePatch(parseProjectManifest(root.content), input.patch),
+      );
+      root.hash = hash(root.content);
+      return this.persistRevision(input, input.expectedRevisionId, snapshot, ['openmovie.yaml']);
+    });
+  }
+
+  commitFiles(input: CommitFilesInput): Promise<RevisionRecord> {
+    return this.exclusive(async () => {
+      this.assertExpectedRevision(input.expectedRevisionId);
+      const snapshot = await this.captureWorkingSnapshot();
+      const files = new Map(snapshot.map((file) => [file.path, file]));
+      const changedPaths = new Set<string>();
+      for (const change of input.changes) {
+        const path = normalizeMoviePath(change.path);
+        validateMovieFile(path, change.content);
+        files.set(path, { path, content: change.content, hash: hash(change.content) });
+        changedPaths.add(path);
+      }
+      const root = files.get('openmovie.yaml');
+      if (!root) throw new Error('openmovie.yaml is missing');
+      const manifest = parseProjectManifest(root.content);
+      manifest.project.updated_at = new Date().toISOString();
+      root.content = serializeProjectManifest(manifest);
+      root.hash = hash(root.content);
+      changedPaths.add('openmovie.yaml');
+      return this.persistRevision(
+        { ...input, patch: [] },
+        input.expectedRevisionId,
+        [...files.values()],
+        [...changedPaths],
+      );
+    });
+  }
+
+  restore(
     revisionId: string,
     expectedRevisionId: string | null,
     authorId: string,
   ): Promise<RevisionRecord> {
-    const target = this.database
-      .prepare('SELECT snapshot_yaml FROM revisions WHERE id = ? AND project_id = ?')
-      .get(revisionId, this.projectId) as { snapshot_yaml: string } | undefined;
-    if (!target) throw new Error(`Revision not found: ${revisionId}`);
-    if (this.currentRevisionId() !== expectedRevisionId) {
-      throw new RevisionConflictError(expectedRevisionId, this.currentRevisionId());
-    }
-    const validated = serializeProjectManifest(parseProjectManifest(target.snapshot_yaml));
-    return this.persistRevision(
-      {
+    return this.exclusive(async () => {
+      this.assertExpectedRevision(expectedRevisionId);
+      const snapshot = this.snapshotForRevision(revisionId);
+      if (snapshot.length === 0) throw new Error(`Revision not found: ${revisionId}`);
+      return this.persistRevision(
+        {
+          expectedRevisionId,
+          authorType: 'user',
+          authorId,
+          message: `Restore ${revisionId}`,
+          patch: [],
+        },
         expectedRevisionId,
-        authorType: 'user',
-        authorId,
-        message: `Restore ${revisionId}`,
-        patch: [],
-      },
-      expectedRevisionId,
-      validated,
-    );
+        snapshot,
+        snapshot.map((file) => file.path),
+      );
+    });
   }
 
   list(limit = 100): RevisionRecord[] {
     const rows = this.database
       .prepare(
-        `SELECT id, parent_id, author_type, author_id, message, patch_json, manifest_hash, created_at
+        `SELECT id, parent_id, author_type, author_id, message, patch_json, manifest_hash, branch, created_at
          FROM revisions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
       )
       .all(this.projectId, limit) as Array<{
@@ -165,6 +284,7 @@ export class RevisionEngine {
       message: string;
       patch_json: string;
       manifest_hash: string;
+      branch: string;
       created_at: string;
     }>;
     return rows.map((row) => ({
@@ -175,41 +295,133 @@ export class RevisionEngine {
       message: row.message,
       patch: JSON.parse(row.patch_json) as MoviePatchOperation[],
       manifestHash: row.manifest_hash,
+      changedPaths: this.changedPathsFor(row.id, row.parent_id),
+      branch: row.branch,
       createdAt: row.created_at,
     }));
   }
 
-  async recover(): Promise<number> {
-    let names: string[];
-    try {
-      names = await readdir(this.journalDirectory);
-    } catch {
-      return 0;
+  listBranches(): BranchRecord[] {
+    const current = this.currentBranch();
+    return (
+      this.database
+        .prepare(
+          `SELECT name, head_revision_id, created_at, updated_at
+           FROM branches WHERE project_id = ? ORDER BY name`,
+        )
+        .all(this.projectId) as Array<{
+        name: string;
+        head_revision_id: string;
+        created_at: string;
+        updated_at: string;
+      }>
+    ).map((row) => ({
+      name: row.name,
+      headRevisionId: row.head_revision_id,
+      current: row.name === current,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  createBranch(name: string): BranchRecord {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,63}$/.test(name) || name.includes('..')) {
+      throw new Error(`Invalid branch name: ${name}`);
     }
-    let recovered = 0;
-    for (const name of names.filter(
-      (item) => item.startsWith('revision-') && item.endsWith('.json'),
-    )) {
-      const path = join(this.journalDirectory, name);
-      const journal = JSON.parse(await readFile(path, 'utf8')) as {
-        record: RevisionRecord;
-        snapshotYaml: string;
+    const head = this.currentRevisionId();
+    if (!head) throw new Error('Cannot branch a project without a Revision');
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `INSERT INTO branches(project_id, name, head_revision_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(this.projectId, name, head, now, now);
+    return { name, headRevisionId: head, current: false, createdAt: now, updatedAt: now };
+  }
+
+  switchBranch(name: string): Promise<BranchRecord> {
+    return this.exclusive(async () => {
+      const branch = this.database
+        .prepare(
+          `SELECT name, head_revision_id, created_at, updated_at
+           FROM branches WHERE project_id = ? AND name = ?`,
+        )
+        .get(this.projectId, name) as
+        | { name: string; head_revision_id: string; created_at: string; updated_at: string }
+        | undefined;
+      if (!branch) throw new Error(`Branch not found: ${name}`);
+      const snapshot = this.snapshotForRevision(branch.head_revision_id);
+      await this.writeSnapshot(snapshot);
+      this.database
+        .prepare(
+          `UPDATE projects SET current_branch = ?, current_revision_id = ?, manifest_hash = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          name,
+          branch.head_revision_id,
+          hashSnapshot(snapshot),
+          new Date().toISOString(),
+          this.projectId,
+        );
+      return {
+        name: branch.name,
+        headRevisionId: branch.head_revision_id,
+        current: true,
+        createdAt: branch.created_at,
+        updatedAt: branch.updated_at,
       };
-      const manifestYaml = await readFile(this.manifestPath, 'utf8');
-      if (hash(manifestYaml) === journal.record.manifestHash) {
-        this.insertRevision(journal.record, journal.snapshotYaml);
-        recovered += 1;
+    });
+  }
+
+  async recover(): Promise<number> {
+    return this.exclusive(async () => {
+      let names: string[];
+      try {
+        names = await readdir(this.journalDirectory);
+      } catch {
+        return 0;
       }
-      await unlink(path);
-    }
-    return recovered;
+      let recovered = 0;
+      for (const name of names.filter(
+        (item) => item.startsWith('revision-') && item.endsWith('.json'),
+      )) {
+        const path = join(this.journalDirectory, name);
+        const journal = JSON.parse(await readFile(path, 'utf8')) as {
+          record: RevisionRecord;
+          snapshotFiles?: SnapshotFile[];
+          snapshotYaml?: string;
+        };
+        const snapshot =
+          journal.snapshotFiles ??
+          (journal.snapshotYaml
+            ? [
+                {
+                  path: 'openmovie.yaml',
+                  content: journal.snapshotYaml,
+                  hash: hash(journal.snapshotYaml),
+                },
+              ]
+            : []);
+        if (snapshot.length > 0) {
+          await this.writeSnapshot(snapshot);
+          this.insertRevision(journal.record, snapshot);
+          recovered += 1;
+        }
+        await unlink(path);
+      }
+      return recovered;
+    });
   }
 
   private async persistRevision(
     input: CommitRevisionInput,
     parentId: string | null,
-    snapshotYaml: string,
+    snapshot: SnapshotFile[],
+    changedPaths: string[],
   ): Promise<RevisionRecord> {
+    for (const file of snapshot) validateMovieFile(file.path, file.content);
     const record: RevisionRecord = {
       id: createId('rev'),
       parentId,
@@ -217,28 +429,31 @@ export class RevisionEngine {
       authorId: input.authorId,
       message: input.message,
       patch: input.patch,
-      manifestHash: hash(snapshotYaml),
+      manifestHash: hashSnapshot(snapshot),
+      changedPaths: [...new Set(changedPaths)].sort(),
+      branch: this.currentBranch(),
       createdAt: new Date().toISOString(),
     };
     const journalPath = join(this.journalDirectory, `revision-${record.id}.json`);
-    await writeFileAtomic(journalPath, JSON.stringify({ record, snapshotYaml }));
-
-    const transaction = this.database.transaction(() => {
-      this.insertRevision(record, snapshotYaml);
-    });
-    await writeFileAtomic(this.manifestPath, snapshotYaml);
-    transaction();
+    await writeFileAtomic(
+      journalPath,
+      JSON.stringify({ version: 2, record, snapshotFiles: snapshot }),
+    );
+    await this.writeSnapshot(snapshot);
+    this.database.transaction(() => this.insertRevision(record, snapshot))();
     await unlink(journalPath);
     return record;
   }
 
-  private insertRevision(record: RevisionRecord, snapshotYaml: string): void {
+  private insertRevision(record: RevisionRecord, snapshot: SnapshotFile[]): void {
+    const root = snapshot.find((file) => file.path === 'openmovie.yaml');
+    if (!root) throw new Error('Revision snapshot has no openmovie.yaml');
     this.database
       .prepare(
         `INSERT OR IGNORE INTO revisions(
           id, project_id, parent_id, status, author_type, author_id, message,
-          patch_json, snapshot_yaml, manifest_hash, created_at
-        ) VALUES (?, ?, ?, 'committed', ?, ?, ?, ?, ?, ?, ?)`,
+          patch_json, snapshot_yaml, manifest_hash, branch, created_at
+        ) VALUES (?, ?, ?, 'committed', ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -248,17 +463,133 @@ export class RevisionEngine {
         record.authorId,
         record.message,
         JSON.stringify(record.patch),
-        snapshotYaml,
+        root.content,
         record.manifestHash,
+        record.branch,
         record.createdAt,
       );
+    this.insertSnapshotFiles(record.id, snapshot);
     this.database
       .prepare(
         `UPDATE projects SET current_revision_id = ?, manifest_hash = ?, updated_at = ? WHERE id = ?`,
       )
       .run(record.id, record.manifestHash, record.createdAt, this.projectId);
     this.database
+      .prepare(
+        `UPDATE branches SET head_revision_id = ?, updated_at = ? WHERE project_id = ? AND name = ?`,
+      )
+      .run(record.id, record.createdAt, this.projectId, record.branch);
+    this.database
       .prepare('INSERT INTO events(type, payload_json, created_at) VALUES (?, ?, ?)')
-      .run('revision.committed', JSON.stringify({ revisionId: record.id }), record.createdAt);
+      .run(
+        'revision.committed',
+        JSON.stringify({
+          revisionId: record.id,
+          branch: record.branch,
+          changedPaths: record.changedPaths,
+        }),
+        record.createdAt,
+      );
+  }
+
+  private insertSnapshotFiles(revisionId: string, snapshot: SnapshotFile[]): void {
+    const statement = this.database.prepare(
+      `INSERT OR IGNORE INTO revision_files(revision_id, relative_path, content, content_hash)
+       VALUES (?, ?, ?, ?)`,
+    );
+    for (const file of snapshot) statement.run(revisionId, file.path, file.content, file.hash);
+  }
+
+  private snapshotForRevision(revisionId: string): SnapshotFile[] {
+    const rows = this.database
+      .prepare(
+        `SELECT relative_path, content, content_hash FROM revision_files
+         WHERE revision_id = ? ORDER BY relative_path`,
+      )
+      .all(revisionId) as Array<{ relative_path: string; content: string; content_hash: string }>;
+    if (rows.length > 0) {
+      return rows.map((row) => ({
+        path: row.relative_path,
+        content: row.content,
+        hash: row.content_hash,
+      }));
+    }
+    const legacy = this.database
+      .prepare('SELECT snapshot_yaml FROM revisions WHERE id = ? AND project_id = ?')
+      .get(revisionId, this.projectId) as { snapshot_yaml: string } | undefined;
+    return legacy
+      ? [
+          {
+            path: 'openmovie.yaml',
+            content: legacy.snapshot_yaml,
+            hash: hash(legacy.snapshot_yaml),
+          },
+        ]
+      : [];
+  }
+
+  private changedPathsFor(revisionId: string, parentId: string | null): string[] {
+    const current = new Map(
+      this.snapshotForRevision(revisionId).map((file) => [file.path, file.hash] as const),
+    );
+    if (!parentId) return [...current.keys()].sort();
+    const parent = new Map(
+      this.snapshotForRevision(parentId).map((file) => [file.path, file.hash] as const),
+    );
+    return [...new Set([...current.keys(), ...parent.keys()])]
+      .filter((path) => current.get(path) !== parent.get(path))
+      .sort();
+  }
+
+  private async captureWorkingSnapshot(): Promise<SnapshotFile[]> {
+    const paths = await this.listYamlFiles(this.projectRoot);
+    return Promise.all(
+      paths.map(async (absolutePath) => {
+        const path = relative(this.projectRoot, absolutePath).split(sep).join('/');
+        const content = await readFile(absolutePath, 'utf8');
+        return { path: normalizeMoviePath(path), content, hash: hash(content) };
+      }),
+    );
+  }
+
+  private async listYamlFiles(directory: string): Promise<string[]> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const paths: string[] = [];
+    for (const entry of entries) {
+      if (entry.name === '.openmovie') continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) paths.push(...(await this.listYamlFiles(path)));
+      else if (entry.isFile() && entry.name.endsWith('.yaml')) paths.push(path);
+    }
+    return paths.sort();
+  }
+
+  private async writeSnapshot(snapshot: SnapshotFile[]): Promise<void> {
+    const expected = new Set(snapshot.map((file) => file.path));
+    const current = await this.listYamlFiles(this.projectRoot);
+    for (const file of snapshot) {
+      const target = resolve(this.projectRoot, file.path);
+      if (relative(this.projectRoot, target).startsWith('..'))
+        throw new Error('Snapshot escapes project');
+      await writeFileAtomic(target, file.content);
+    }
+    for (const absolutePath of current) {
+      const path = relative(this.projectRoot, absolutePath).split(sep).join('/');
+      if (!expected.has(path)) await unlink(absolutePath);
+    }
+  }
+
+  private assertExpectedRevision(expectedRevisionId: string | null): void {
+    const actual = this.currentRevisionId();
+    if (actual !== expectedRevisionId) throw new RevisionConflictError(expectedRevisionId, actual);
+  }
+
+  private exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.writeQueue.then(work, work);
+    this.writeQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 }
