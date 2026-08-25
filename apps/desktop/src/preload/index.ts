@@ -154,7 +154,8 @@ export type ProviderProfile = {
   id: string;
   label: string;
   baseUrl: string;
-  protocol: 'openai_chat' | 'openai_responses' | 'openai_images' | 'http_video_jobs' | 'custom';
+  protocol:
+    'openai_chat' | 'openai_responses' | 'openai_images' | 'http_video_jobs' | 'custom' | 'plugin';
   model: string;
   secretId: string;
   hasSecret: boolean;

@@ -19,6 +19,7 @@
 | [Security Design](./SECURITY.md)                | 威胁模型、Secret、权限和安全门禁             | Implementation Baseline |
 | [Performance](./PERFORMANCE.md)                 | 离线性能工作负载、阈值和 CI 门禁             | Implementation Baseline |
 | [Accessibility](./ACCESSIBILITY.md)             | 键盘、辅助技术与中英本地化基础               | Implementation Baseline |
+| [Plugin Development](./PLUGIN_DEVELOPMENT.md)   | 隔离进程 Plugin Manifest 与开发模式          | Implementation Baseline |
 | [Implementation Plan](./IMPLEMENTATION_PLAN.md) | Milestone、Issues、CI 和 DoD                 | Ready to Start          |
 | [ADR Index](./adr/README.md)                    | 已接受架构决策                               | Accepted                |
 

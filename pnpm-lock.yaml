@@ -80,6 +80,9 @@ importers:
       '@openmovie/movie-ir':
         specifier: workspace:*
         version: link:../../packages/movie-ir
+      '@openmovie/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@openmovie/project-store':
         specifier: workspace:*
         version: link:../../packages/project-store
@@ -237,6 +240,19 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/plugin-sdk:
+    dependencies:
+      '@openmovie/provider-gateway':
+        specifier: workspace:*
+        version: link:../provider-gateway
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -4969,6 +4985,12 @@ packages:
       }
     engines: { node: '>=10' }
 
+  zod@4.3.6:
+    resolution:
+      {
+        integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==,
+      }
+
   zod@4.4.3:
     resolution:
       {
@@ -7734,6 +7756,8 @@ snapshots:
       yargs-parser: 21.1.1
 
   yocto-queue@0.1.0: {}
+
+  zod@4.3.6: {}
 
   zod@4.4.3: {}
 

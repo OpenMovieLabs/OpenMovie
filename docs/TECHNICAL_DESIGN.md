@@ -1435,6 +1435,9 @@ interface PublicError {
 - Custom HTTP 声明式映射。
 - Tool 与 MCP Schema。
 - Plugin Manifest。
+- `@openmovie/plugin-sdk` 实现 v0.1 Manifest 与 JSON-RPC Contract；开发 Plugin 只在显式环境变量
+  下加载，以请求级独立 Node 进程运行。MVP Capability 限定为 `text.generate`，无 Secret 和
+  Project Path 注入，输出仍须通过 Agent Plan Schema 与 Revision Proposal 门禁。
 
 每个 Adapter 必须有 Fake Server/Fixture，CI 不依赖真实付费服务。
 

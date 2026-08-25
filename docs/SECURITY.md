@@ -303,6 +303,9 @@ Plugin Manifest 声明：
 - 权限变更重新审批。
 - Plugin 更新后重新验证 Manifest。
 - 未签名 Plugin 显示风险并默认禁用自动更新。
+- 当前开发模式只有在 `OPENMOVIE_PLUGIN_DEV_MANIFESTS` 显式设置时启用，Manifest Entry 必须位于
+  Manifest 目录内。每次请求使用新的 Node 子进程、最小环境、输出/诊断上限与超时；不传入
+  Project 路径或 Secret。进程隔离不是 OS Sandbox，因此只应加载用户信任的本地源码。
 
 ## 18. Update 与供应链
 

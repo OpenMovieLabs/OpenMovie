@@ -74,6 +74,18 @@ function mediaSidecarEnvironment(): NodeJS.ProcessEnv {
   return resolvePackagedMediaSidecar(process.resourcesPath, process.platform);
 }
 
+function isRuntimeProvider(value: unknown): value is { id: string; capabilities: string[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'capabilities' in value &&
+    Array.isArray(value.capabilities) &&
+    value.capabilities.every((capability) => typeof capability === 'string')
+  );
+}
+
 function parseEntityCommit(value: unknown): unknown {
   if (
     typeof value !== 'object' ||
@@ -894,7 +906,31 @@ void app
       if (typeof id !== 'string') throw new Error('Invalid secret ID');
       return secrets?.delete(id) ?? false;
     });
-    ipcMain.handle('openmovie:provider-list', () => secrets?.listProviderProfiles() ?? []);
+    ipcMain.handle('openmovie:provider-list', async () => {
+      const profiles = secrets?.listProviderProfiles() ?? [];
+      const value = await core?.request({ method: 'provider.list', params: {} });
+      const runtimeProviders = Array.isArray(value) ? value : [];
+      const now = new Date().toISOString();
+      const plugins = runtimeProviders.flatMap((item: unknown) => {
+        if (!isRuntimeProvider(item) || !item.id.startsWith('plugin.')) {
+          return [];
+        }
+        return [
+          {
+            id: item.id,
+            label: item.id,
+            baseUrl: 'process://development-plugin',
+            protocol: 'plugin' as const,
+            model: 'plugin-defined',
+            secretId: '',
+            hasSecret: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ];
+      });
+      return [...profiles, ...plugins];
+    });
     ipcMain.handle('openmovie:provider-save', async (_event, value: unknown) => {
       if (typeof value !== 'object' || value === null) throw new Error('Invalid provider profile');
       const input = value as Record<string, unknown>;
@@ -928,6 +964,21 @@ void app
     });
     ipcMain.handle('openmovie:provider-test', async (_event, providerId: unknown) => {
       if (typeof providerId !== 'string') throw new Error('Provider ID is required');
+      if (providerId.startsWith('plugin.')) {
+        const value = await core?.request({ method: 'provider.list', params: {} });
+        const ready =
+          Array.isArray(value) &&
+          value.some((item: unknown) => isRuntimeProvider(item) && item.id === providerId);
+        if (!ready) throw new Error('Development Plugin is not loaded');
+        return {
+          profileId: providerId,
+          status: 'ready',
+          latencyMs: 0,
+          checkedAt: new Date().toISOString(),
+          message: 'Development Plugin process is registered',
+          capabilities: ['text.generate'],
+        };
+      }
       if (!secrets) throw new Error('Secret Store is unavailable');
       const profile = secrets.listProviderProfiles().find((item) => item.id === providerId);
       if (!profile) throw new Error('Provider profile not found');

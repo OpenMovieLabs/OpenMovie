@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "plugin.text_echo",
+  "name": "Text Echo Development Provider",
+  "apiVersion": "0.1.0",
+  "entry": "plugin.mjs",
+  "capabilities": ["text.generate"],
+  "timeoutMs": 30000
+}

@@ -1529,7 +1529,9 @@ export function App(): React.JSX.Element {
                   .filter(
                     (provider) =>
                       provider.hasSecret &&
-                      ['openai_chat', 'openai_responses', 'custom'].includes(provider.protocol),
+                      ['openai_chat', 'openai_responses', 'custom', 'plugin'].includes(
+                        provider.protocol,
+                      ),
                   )
                   .map((provider) => (
                     <option key={provider.id} value={provider.id}>

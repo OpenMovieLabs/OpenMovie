@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,6 +32,57 @@ describe('CoreServer', () => {
   it('returns typed failures for invalid commands', async () => {
     const response = await new CoreServer().handle({ id: 'bad', method: 'unknown' });
     expect(response).toMatchObject({ ok: false, error: { code: 'INVALID_COMMAND' } });
+  });
+
+  it('loads an explicitly enabled development Plugin as a planning Provider', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-core-plugin-'));
+    const entry = join(parent, 'plugin.mjs');
+    await writeFile(
+      entry,
+      `let b='';process.stdin.on('data',c=>b+=c);process.stdin.on('end',()=>{const r=JSON.parse(b);process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result:{text:'{"summary":"No IR change","actions":[]}',model:r.params.model,finishReason:'stop'}})+'\\n')})`,
+    );
+    const manifest = join(parent, 'openmovie.plugin.json');
+    await writeFile(
+      manifest,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'plugin.core_fixture',
+        name: 'Core Fixture',
+        apiVersion: '0.1.0',
+        entry: 'plugin.mjs',
+        capabilities: ['text.generate'],
+      }),
+    );
+    const previous = process.env.OPENMOVIE_PLUGIN_DEV_MANIFESTS;
+    process.env.OPENMOVIE_PLUGIN_DEV_MANIFESTS = manifest;
+    const server = new CoreServer();
+    try {
+      const initialized = await server.handle({
+        id: 'plugin-init',
+        method: 'initialize',
+        params: {
+          protocolVersion: PROTOCOL_VERSION,
+          client: { name: 'test', version: '0.0.0', platform: 'linux' },
+        },
+      });
+      expect(initialized.ok).toBe(true);
+      const listed = await server.handle({
+        id: 'plugin-list',
+        method: 'provider.list',
+        params: {},
+      });
+      expect(listed).toMatchObject({
+        ok: true,
+        result: [
+          expect.objectContaining({ id: 'fake' }),
+          expect.objectContaining({ id: 'plugin.core_fixture' }),
+        ],
+      });
+    } finally {
+      await server.close();
+      if (previous === undefined) delete process.env.OPENMOVIE_PLUGIN_DEV_MANIFESTS;
+      else process.env.OPENMOVIE_PLUGIN_DEV_MANIFESTS = previous;
+    }
   });
 
   it('renders a selected Take into a persisted Current Cut when FFmpeg is available', async () => {

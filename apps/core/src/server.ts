@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import {
   CORE_API_VERSION,
@@ -38,6 +38,7 @@ import {
   FfmpegTimelineRenderer,
 } from '@openmovie/media-engine';
 import type { StoredObject, TakeRecord } from '@openmovie/project-store';
+import { loadDevelopmentPlugin } from '@openmovie/plugin-sdk';
 import packageMetadata from '../package.json' with { type: 'json' };
 
 const startedAt = new Date();
@@ -59,6 +60,7 @@ export class CoreServer {
   private readonly frames = new FfmpegFrameExtractor();
   private readonly mediaAnalyzer = new FfmpegMediaAnalyzer();
   private readonly timelineRenderer = new FfmpegTimelineRenderer();
+  private developmentPluginsLoaded = false;
 
   constructor() {
     const fake = new FakeProvider();
@@ -518,6 +520,7 @@ export class CoreServer {
   private async dispatch(command: CoreCommand): Promise<CoreResponse> {
     switch (command.method) {
       case 'initialize': {
+        await this.loadDevelopmentPlugins();
         try {
           assertProtocolCompatible(command.params.protocolVersion);
         } catch (error) {
@@ -556,6 +559,7 @@ export class CoreServer {
               'task.run',
               'task.approve',
               'task.events',
+              'plugin.dev_process_provider',
             ],
           },
         };
@@ -986,6 +990,19 @@ export class CoreServer {
   private requireProject(): ProjectStore {
     if (!this.project) throw new ProjectStoreError('PROJECT_NOT_OPEN', 'No project is open');
     return this.project;
+  }
+
+  private async loadDevelopmentPlugins(): Promise<void> {
+    if (this.developmentPluginsLoaded) return;
+    this.developmentPluginsLoaded = true;
+    const manifests = (process.env.OPENMOVIE_PLUGIN_DEV_MANIFESTS ?? '')
+      .split(delimiter)
+      .map((path) => path.trim())
+      .filter(Boolean);
+    for (const manifestPath of manifests) {
+      const plugin = await loadDevelopmentPlugin(manifestPath);
+      this.providers.upsert(plugin.provider);
+    }
   }
 
   private async evaluateTake(
