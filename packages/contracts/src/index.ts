@@ -58,6 +58,11 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('project.doctor'),
+    params: z.object({ deep: z.boolean().default(false) }),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('revision.commit'),
     params: z.object({
       expectedRevisionId: z.string().nullable(),
@@ -198,6 +203,8 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
       requiresApproval: z.boolean().default(false),
       targetShotId: z.string().min(1).optional(),
       mediaKind: z.enum(['image', 'video']).default('image'),
+      mediaProviderId: z.string().min(1).default('fake'),
+      mediaModel: z.string().min(1),
     }),
   }),
   z.object({
@@ -235,6 +242,17 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
       id: z.string().min(1),
       baseUrl: z.string().url(),
       apiKey: z.string().min(1),
+      imageGeneration: z.boolean().default(false),
+    }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('provider.configure_http_video'),
+    params: z.object({
+      id: z.string().min(1),
+      baseUrl: z.string().url(),
+      apiKey: z.string().min(1),
+      path: z.string().min(1).default('videos'),
     }),
   }),
   z.object({
@@ -334,6 +352,21 @@ export const storedObjectSchema = z.object({
   byteSize: z.number().int().nonnegative(),
   mimeType: z.string(),
   path: z.string(),
+});
+
+export const doctorIssueSchema = z.object({
+  severity: z.enum(['warning', 'error']),
+  code: z.string(),
+  message: z.string(),
+  path: z.string().optional(),
+});
+
+export const doctorReportSchema = z.object({
+  status: z.enum(['healthy', 'warning', 'failed']),
+  projectId: z.string(),
+  checkedAt: z.string().datetime(),
+  checks: z.number().int().nonnegative(),
+  issues: z.array(doctorIssueSchema),
 });
 
 export const takeRecordSchema = z.object({
@@ -440,6 +473,7 @@ export type BranchRecord = z.infer<typeof branchRecordSchema>;
 export type FileDiff = z.infer<typeof fileDiffSchema>;
 export type RevisionDiff = z.infer<typeof revisionDiffSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
+export type DoctorReport = z.infer<typeof doctorReportSchema>;
 export type TakeRecord = z.infer<typeof takeRecordSchema>;
 export type EvaluationRecord = z.infer<typeof evaluationRecordSchema>;
 export type Task = z.infer<typeof taskSchema>;

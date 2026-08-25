@@ -17,7 +17,7 @@ export type ProviderProfile = {
   id: string;
   label: string;
   baseUrl: string;
-  protocol: 'openai_chat' | 'openai_responses' | 'custom';
+  protocol: 'openai_chat' | 'openai_responses' | 'openai_images' | 'http_video_jobs' | 'custom';
   model: string;
   secretId: string;
   hasSecret: boolean;

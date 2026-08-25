@@ -14,6 +14,7 @@ import {
 import type {
   BranchRecord,
   CoreHealth,
+  DoctorReport,
   FileDiff,
   HarnessHealth,
   InitializeResult,
@@ -35,6 +36,11 @@ type RuntimeState =
 type ProjectSection =
   'Overview' | 'Story' | 'Characters' | 'Scenes' | 'Shots' | 'Timeline' | 'Tests';
 
+function artifactUrl(uri: string): string | undefined {
+  const match = /^om:\/\/object\/sha256\/([a-f0-9]{64})$/.exec(uri);
+  return match?.[1] ? `openmovie-artifact://sha256/${match[1]}` : undefined;
+}
+
 export function App(): React.JSX.Element {
   const initialized = useRef(false);
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' });
@@ -51,6 +57,7 @@ export function App(): React.JSX.Element {
   const [evaluationsByTake, setEvaluationsByTake] = useState<Record<string, EvaluationRecord[]>>(
     {},
   );
+  const [doctorReport, setDoctorReport] = useState<DoctorReport | null>(null);
   const [section, setSection] = useState<ProjectSection>('Overview');
   const [showCreate, setShowCreate] = useState(false);
   const [showTask, setShowTask] = useState(false);
@@ -60,7 +67,7 @@ export function App(): React.JSX.Element {
     id: 'openrouter',
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1/',
-    protocol: 'openai_chat' as const,
+    protocol: 'openai_chat' as ProviderProfile['protocol'],
     model: '',
     apiKey: '',
   });
@@ -68,6 +75,7 @@ export function App(): React.JSX.Element {
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [taskShotId, setTaskShotId] = useState('');
   const [taskMediaKind, setTaskMediaKind] = useState<'image' | 'video'>('image');
+  const [mediaProviderId, setMediaProviderId] = useState('fake');
   const [branchName, setBranchName] = useState('visual-experiment');
   const [characterName, setCharacterName] = useState('');
   const [characterAppearance, setCharacterAppearance] = useState('');
@@ -103,6 +111,30 @@ export function App(): React.JSX.Element {
         });
       });
   }, []);
+
+  useEffect(() => {
+    if (!lastTask || !['queued', 'planning', 'running'].includes(lastTask.status)) return;
+    let disposed = false;
+    const poll = async (): Promise<void> => {
+      try {
+        const tasks = await window.openMovie.listTasks();
+        const next = tasks.find((task) => task.id === lastTask.id);
+        if (!next || disposed) return;
+        setLastTask(next);
+        if (['succeeded', 'failed', 'cancelled'].includes(next.status) && project) {
+          await loadProject(await window.openMovie.getProjectSummary());
+        }
+      } catch (caught) {
+        if (!disposed) setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 750);
+    void poll();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [lastTask?.id, lastTask?.status, project?.id]);
 
   const run = async (work: () => Promise<void>): Promise<void> => {
     setBusy(true);
@@ -157,6 +189,7 @@ export function App(): React.JSX.Element {
     );
     setEvaluationsByTake(Object.fromEntries(evaluationEntries));
     setWorkingChanges(nextWorkingChanges);
+    setDoctorReport(null);
     setSelectedDiff(null);
     setShotSceneId((current) => current || (nextScenes[0]?.id ?? ''));
     setLastTask(tasks.at(-1) ?? null);
@@ -244,6 +277,7 @@ export function App(): React.JSX.Element {
         requiresApproval,
         taskShotId || undefined,
         taskMediaKind,
+        mediaProviderId,
       );
       setLastTask(result.task);
       await loadProject(result.project);
@@ -258,6 +292,11 @@ export function App(): React.JSX.Element {
       setLastTask(result.task);
       await loadProject(result.project);
     });
+  };
+
+  const cancelTask = (): void => {
+    if (!lastTask) return;
+    void run(async () => setLastTask(await window.openMovie.cancelTask(lastTask.id)));
   };
 
   const selectTake = (takeId: string): void => {
@@ -288,6 +327,10 @@ export function App(): React.JSX.Element {
       setProviders(await window.openMovie.listProviders());
       setProviderForm((current) => ({ ...current, apiKey: '' }));
     });
+  };
+
+  const runDoctor = (deep = false): void => {
+    void run(async () => setDoctorReport(await window.openMovie.runDoctor(deep)));
   };
 
   return (
@@ -382,6 +425,11 @@ export function App(): React.JSX.Element {
                   {lastTask?.status === 'awaiting_approval' && (
                     <button className="primary" disabled={busy} onClick={approveTask}>
                       Approve and continue
+                    </button>
+                  )}
+                  {lastTask && ['queued', 'planning', 'running'].includes(lastTask.status) && (
+                    <button className="secondary" disabled={busy} onClick={cancelTask}>
+                      Cancel task
                     </button>
                   )}
                 </article>
@@ -560,8 +608,26 @@ export function App(): React.JSX.Element {
                               : typeof take.provider.providerId === 'string'
                                 ? take.provider.providerId
                                 : 'Take';
+                          const previewUrl = artifactUrl(take.artifact.objectUri);
                           return (
                             <div className="take-row" key={take.id} data-selected={selected}>
+                              <div className="take-preview-slot">
+                                {previewUrl && take.artifact.mimeType.startsWith('image/') && (
+                                  <img
+                                    className="take-preview"
+                                    src={previewUrl}
+                                    alt="Generated Take"
+                                  />
+                                )}
+                                {previewUrl && take.artifact.mimeType.startsWith('video/') && (
+                                  <video
+                                    className="take-preview"
+                                    src={previewUrl}
+                                    controls
+                                    preload="metadata"
+                                  />
+                                )}
+                              </div>
                               <div>
                                 <strong>{model}</strong>
                                 <span>
@@ -641,6 +707,43 @@ export function App(): React.JSX.Element {
                   </button>
                 </article>
               </div>
+            ) : section === 'Tests' ? (
+              <article className="placeholder-panel doctor-panel">
+                <span className="section-label">PROJECT DOCTOR</span>
+                <h2>Verify the movie like a codebase.</h2>
+                <p>
+                  Check Movie IR schemas and references, selected Takes, SQLite integrity, Object
+                  Store files, and working changes. Deep mode also re-hashes every media object.
+                </p>
+                <div className="doctor-actions">
+                  <button className="primary" disabled={busy} onClick={() => runDoctor(false)}>
+                    Run checks
+                  </button>
+                  <button className="secondary" disabled={busy} onClick={() => runDoctor(true)}>
+                    Run deep checks
+                  </button>
+                </div>
+                {doctorReport && (
+                  <div className="doctor-report" data-status={doctorReport.status}>
+                    <strong>
+                      {doctorReport.status} · {doctorReport.checks} checks
+                    </strong>
+                    {doctorReport.issues.length === 0 ? (
+                      <span>No project integrity problems found.</span>
+                    ) : (
+                      doctorReport.issues.map((issue, index) => (
+                        <div className="doctor-issue" key={`${issue.code}-${index}`}>
+                          <code>{issue.code}</code>
+                          <span>
+                            {issue.path ? `${issue.path}: ` : ''}
+                            {issue.message}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </article>
             ) : (
               <article className="placeholder-panel">
                 <span className="section-label">{section.toUpperCase()}</span>
@@ -795,10 +898,35 @@ export function App(): React.JSX.Element {
               Media output
               <select
                 value={taskMediaKind}
-                onChange={(event) => setTaskMediaKind(event.target.value as 'image' | 'video')}
+                onChange={(event) => {
+                  setTaskMediaKind(event.target.value as 'image' | 'video');
+                  setMediaProviderId('fake');
+                }}
               >
                 <option value="image">Image Take</option>
                 <option value="video">Video Take</option>
+              </select>
+            </label>
+            <label>
+              Media provider
+              <select
+                value={mediaProviderId}
+                onChange={(event) => setMediaProviderId(event.target.value)}
+              >
+                <option value="fake">Built-in deterministic Provider</option>
+                {providers
+                  .filter(
+                    (provider) =>
+                      provider.hasSecret &&
+                      (taskMediaKind === 'video'
+                        ? provider.protocol === 'http_video_jobs'
+                        : provider.protocol === 'openai_images'),
+                  )
+                  .map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.label} · {provider.model}
+                    </option>
+                  ))}
               </select>
             </label>
             <p>
@@ -835,7 +963,9 @@ export function App(): React.JSX.Element {
               <div className="provider-row" key={provider.id}>
                 <div>
                   <strong>{provider.label}</strong>
-                  <span>{provider.model || provider.baseUrl}</span>
+                  <span>
+                    {provider.protocol} · {provider.model || provider.baseUrl}
+                  </span>
                 </div>
                 <span className={provider.hasSecret ? 'key-state ready' : 'key-state'}>
                   {provider.hasSecret ? 'Key saved' : 'No key'}
@@ -851,6 +981,22 @@ export function App(): React.JSX.Element {
                     setProviderForm({ ...providerForm, label: event.target.value })
                   }
                 />
+              </label>
+              <label>
+                API protocol
+                <select
+                  value={providerForm.protocol}
+                  onChange={(event) =>
+                    setProviderForm({
+                      ...providerForm,
+                      protocol: event.target.value as ProviderProfile['protocol'],
+                    })
+                  }
+                >
+                  <option value="openai_chat">OpenAI-compatible Chat / Vision</option>
+                  <option value="openai_images">OpenAI-compatible Images</option>
+                  <option value="http_video_jobs">Async HTTP Video Jobs</option>
+                </select>
               </label>
               <label>
                 Base URL

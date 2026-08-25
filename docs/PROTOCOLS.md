@@ -90,6 +90,20 @@ interface CoreCommand<T = unknown> {
 
 写命令必须携带 expectedRevisionId；创建新 Project 等无父版本操作例外。
 
+### 5.1 当前 Core JSONL 方法
+
+桌面 Sidecar 使用带 `id` 的 JSONL/Node IPC 变体。当前运行时验证的方法包括：
+
+- Project：`project.create`、`project.open`、`project.get_summary`、`project.doctor`。
+- Revision：commit、list、diff、working changes、restore、branch create/list/switch。
+- Movie IR：Character、Scene、Shot 创建，实体读取和乐观并发更新。
+- Media：Object import、Take list/select、Evaluation list。
+- Task：create、run、list、events、approve、cancel。
+- Provider：OpenAI-compatible Chat/Vision/Images、通用异步 HTTP Video Jobs。
+- Harness：Codex App Server 与可用性探测。
+
+`task.create` 将规划与媒体执行明确分离：`plannerProviderId/plannerModel` 负责理解目标，`mediaProviderId/mediaModel/mediaKind` 负责产物生成。长任务创建后立即返回；状态通过持久化 Task 查询和 Event sequence 观察。异步 Provider Job ID 在 Step checkpoint 中持久化，重试时优先恢复远程 Job。
+
 ## 6. Core Response
 
 ```typescript
@@ -461,6 +475,8 @@ interface ProviderProfile {
   dataPolicy: ProviderDataPolicy;
 }
 ```
+
+内置桌面配置当前区分 `openai_chat`、`openai_images` 和 `http_video_jobs`，避免把“URL 看起来兼容”误当成能力兼容。Secret 只保存在应用级系统加密数据库中，Project 与 Renderer 只看到 Profile ID 和掩码状态。
 
 credentialRefs 只能是 Secret Ref，不接受明文。
 

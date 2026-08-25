@@ -1,11 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   PROTOCOL_VERSION,
   branchRecordSchema,
   coreHealthSchema,
+  doctorReportSchema,
   fileDiffSchema,
   evaluationRecordSchema,
   harnessHealthSchema,
@@ -18,13 +20,21 @@ import {
   takeRecordSchema,
 } from '@openmovie/contracts';
 import { movieEntitySchema } from '@openmovie/movie-ir';
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } from 'electron';
 
 import { CoreClient } from './core-client.js';
 import { EncryptedSecretStore } from './secret-store.js';
 
 let core: CoreClient | undefined;
 let secrets: EncryptedSecretStore | undefined;
+let activeProjectRoot: string | undefined;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'openmovie-artifact',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+  },
+]);
 
 function supportedPlatform(): 'darwin' | 'win32' | 'linux' {
   if (
@@ -94,6 +104,26 @@ void app
   .then(async () => {
     core = new CoreClient(coreEntry());
     await core.start();
+    protocol.handle('openmovie-artifact', (request) => {
+      if (!activeProjectRoot) return new Response('No project is open', { status: 404 });
+      const url = new URL(request.url);
+      const digest = url.hostname === 'sha256' ? url.pathname.slice(1) : '';
+      if (!/^[a-f0-9]{64}$/.test(digest)) {
+        return new Response('Invalid artifact URI', { status: 400 });
+      }
+      const path = join(
+        activeProjectRoot,
+        '.openmovie',
+        'objects',
+        'sha256',
+        digest.slice(0, 2),
+        digest,
+      );
+      return net.fetch(pathToFileURL(path).toString(), {
+        headers: request.headers,
+        bypassCustomProtocolHandlers: true,
+      });
+    });
     secrets = new EncryptedSecretStore(join(app.getPath('userData'), 'settings.sqlite'), {
       isAvailable: () => safeStorage.isEncryptionAvailable(),
       encrypt: (plaintext) => safeStorage.encryptStringAsync(plaintext),
@@ -140,12 +170,14 @@ void app
         properties: ['createDirectory', 'showOverwriteConfirmation'],
       });
       if (selection.canceled || !selection.filePath) return null;
-      return projectSummarySchema.parse(
+      const created = projectSummarySchema.parse(
         await core?.request({
           method: 'project.create',
           params: { path: selection.filePath, title: title.trim() },
         }),
       );
+      activeProjectRoot = created.root;
+      return created;
     });
     ipcMain.handle('openmovie:project-open', async () => {
       const selection = await dialog.showOpenDialog({
@@ -154,13 +186,20 @@ void app
       });
       const path = selection.filePaths[0];
       if (selection.canceled || !path) return null;
-      return projectSummarySchema.parse(
+      const opened = projectSummarySchema.parse(
         await core?.request({ method: 'project.open', params: { path, takeoverStaleLock: false } }),
       );
+      activeProjectRoot = opened.root;
+      return opened;
     });
     ipcMain.handle('openmovie:project-summary', async () =>
       projectSummarySchema.parse(
         await core?.request({ method: 'project.get_summary', params: {} }),
+      ),
+    );
+    ipcMain.handle('openmovie:project-doctor', async (_event, deep: unknown) =>
+      doctorReportSchema.parse(
+        await core?.request({ method: 'project.doctor', params: { deep: deep === true } }),
       ),
     );
     ipcMain.handle('openmovie:project-rename', async (_event, title: unknown) => {
@@ -338,6 +377,7 @@ void app
         requiresApproval: unknown,
         targetShotId: unknown,
         mediaKind: unknown,
+        mediaProviderId: unknown,
       ) => {
         if (typeof goal !== 'string' || goal.trim().length === 0)
           throw new Error('Task goal is required');
@@ -358,10 +398,51 @@ void app
           const apiKey = await secrets.get(profile.secretId);
           await core?.request({
             method: 'provider.configure_openai_compatible',
-            params: { id: profile.id, baseUrl: profile.baseUrl, apiKey },
+            params: {
+              id: profile.id,
+              baseUrl: profile.baseUrl,
+              apiKey,
+              imageGeneration: false,
+            },
           });
           providerId = profile.id;
           model = profile.model;
+        }
+        let selectedMediaProviderId = 'fake';
+        let selectedMediaModel = mediaKind === 'video' ? 'fake-video-v1' : 'fake-image-v1';
+        if (typeof mediaProviderId === 'string' && mediaProviderId !== 'fake') {
+          if (!secrets) throw new Error('Secret Store is unavailable');
+          const profile = secrets
+            .listProviderProfiles()
+            .find((item) => item.id === mediaProviderId);
+          if (!profile) throw new Error(`Media Provider profile not found: ${mediaProviderId}`);
+          const apiKey = await secrets.get(profile.secretId);
+          if (mediaKind === 'video') {
+            if (profile.protocol !== 'http_video_jobs') {
+              throw new Error('Selected Provider does not support asynchronous video jobs');
+            }
+            await core?.request({
+              method: 'provider.configure_http_video',
+              params: { id: profile.id, baseUrl: profile.baseUrl, apiKey, path: 'videos' },
+            });
+          } else {
+            if (profile.protocol !== 'openai_images') {
+              throw new Error(
+                'Selected Provider does not support OpenAI-compatible image generation',
+              );
+            }
+            await core?.request({
+              method: 'provider.configure_openai_compatible',
+              params: {
+                id: profile.id,
+                baseUrl: profile.baseUrl,
+                apiKey,
+                imageGeneration: true,
+              },
+            });
+          }
+          selectedMediaProviderId = profile.id;
+          selectedMediaModel = profile.model;
         }
         const created = taskSchema.parse(
           await core?.request({
@@ -372,15 +453,21 @@ void app
               plannerModel: model,
               requiresApproval: requiresApproval === true,
               mediaKind: mediaKind === 'video' ? 'video' : 'image',
+              mediaProviderId: selectedMediaProviderId,
+              mediaModel: selectedMediaModel,
               ...(typeof targetShotId === 'string' && targetShotId ? { targetShotId } : {}),
             },
           }),
         );
-        const task = taskSchema.parse(
-          await core?.request({ method: 'task.run', params: { taskId: created.id } }, 60_000),
-        );
+        void core
+          ?.request({ method: 'task.run', params: { taskId: created.id } }, 15 * 60_000)
+          .catch((error: unknown) => {
+            process.stderr.write(
+              `[task] Background task failed: ${error instanceof Error ? error.message : String(error)}\n`,
+            );
+          });
         return {
-          task,
+          task: created,
           project: projectSummarySchema.parse(
             await core?.request({ method: 'project.get_summary', params: {} }),
           ),
@@ -432,10 +519,23 @@ void app
     ipcMain.handle('openmovie:task-list', async () =>
       taskSchema.array().parse(await core?.request({ method: 'task.list', params: {} })),
     );
+    ipcMain.handle('openmovie:task-cancel', async (_event, taskId: unknown) => {
+      if (typeof taskId !== 'string') throw new Error('Task ID is required');
+      return taskSchema.parse(await core?.request({ method: 'task.cancel', params: { taskId } }));
+    });
     ipcMain.handle('openmovie:task-approve', async (_event, taskId: unknown) => {
       if (typeof taskId !== 'string') throw new Error('Task ID is required');
+      void core
+        ?.request({ method: 'task.approve', params: { taskId } }, 15 * 60_000)
+        .catch((error: unknown) => {
+          process.stderr.write(
+            `[task] Background approved task failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+        });
       const task = taskSchema.parse(
-        await core?.request({ method: 'task.approve', params: { taskId } }, 60_000),
+        ((await core?.request({ method: 'task.list', params: {} })) as unknown[]).find(
+          (item) => typeof item === 'object' && item !== null && 'id' in item && item.id === taskId,
+        ),
       );
       return {
         task,
@@ -489,7 +589,13 @@ void app
       if (String(input.apiKey))
         await secrets.set(secretId, String(input.label), String(input.apiKey));
       const protocol = String(input.protocol);
-      if (protocol !== 'openai_chat' && protocol !== 'openai_responses' && protocol !== 'custom') {
+      if (
+        protocol !== 'openai_chat' &&
+        protocol !== 'openai_responses' &&
+        protocol !== 'openai_images' &&
+        protocol !== 'http_video_jobs' &&
+        protocol !== 'custom'
+      ) {
         throw new Error('Unsupported provider protocol');
       }
       return secrets.setProviderProfile({
@@ -513,6 +619,7 @@ void app
             params: { path: projectRoot, title: 'Desktop Smoke Test' },
           }),
         );
+        activeProjectRoot = created.root;
         revisionRecordSchema.parse(
           await core.request({
             method: 'revision.commit',
@@ -558,6 +665,8 @@ void app
               plannerModel: 'fake-text-v1',
               requiresApproval: false,
               mediaKind: 'image',
+              mediaProviderId: 'fake',
+              mediaModel: 'fake-image-v1',
               targetShotId: shotCommit.entity.id,
             },
           }),
@@ -615,6 +724,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  activeProjectRoot = undefined;
   secrets?.close();
   secrets = undefined;
   core?.stop();

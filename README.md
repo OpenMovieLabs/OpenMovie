@@ -52,6 +52,22 @@ pnpm dev
 
 Run `pnpm smoke:desktop` for the self-closing Electron integration test. It verifies the Core handshake, secure Preload bridge, SQLite project creation, Movie IR entity commits, targeted Fake Provider generation, Object Store import, Take and evaluation persistence, and Harness detection.
 
+### CLI and project integrity
+
+The CLI uses the same Project Store and Revision engine as Desktop:
+
+```bash
+pnpm cli doctor /absolute/path/to/MyMovie --deep
+pnpm cli summary /absolute/path/to/MyMovie --json
+pnpm cli export /absolute/path/to/MyMovie /absolute/path/to/MyMovie-export
+```
+
+Project Doctor validates Movie IR schemas and references, selected Takes, SQLite integrity, content-addressed objects, and working changes. The same checks are available in Desktop under **Tests**.
+
+Generated image and video Takes are previewed through a restricted `openmovie-artifact` protocol. It resolves only SHA-256 objects inside the currently open project and does not expose arbitrary local file paths to the Renderer.
+
+Version tags such as `v0.1.0` trigger signed-ready Windows and macOS packaging in GitHub Actions. Signing credentials are optional for development builds and can be added as repository secrets for public distribution.
+
 ### Agent Harnesses and MCP
 
 OpenMovie Desktop detects a local Codex installation and can use its official App Server as a read-only planning harness. OpenMovie exposes typed dynamic tools for project inspection and Revision-safe Scene/Shot creation; all writes still pass through Core.

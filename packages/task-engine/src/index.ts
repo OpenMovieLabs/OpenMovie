@@ -38,7 +38,12 @@ export type TaskEvent = {
 
 export type StepHandler = (
   input: Record<string, unknown>,
-  context: { signal: AbortSignal; task: Task; step: TaskStep },
+  context: {
+    signal: AbortSignal;
+    task: Task;
+    step: TaskStep;
+    checkpoint: (output: unknown) => void;
+  },
 ) => Promise<unknown>;
 
 export interface TaskPersistence {
@@ -204,7 +209,17 @@ export class TaskEngine {
           attempt: step.attempt,
         });
         try {
-          step.output = await handler(step.input, { signal: controller.signal, task, step });
+          step.output = await handler(step.input, {
+            signal: controller.signal,
+            task,
+            step,
+            checkpoint: (output) => {
+              step.output = structuredClone(output);
+              this.touch(task);
+              this.persistence.saveTask(task);
+              this.emit(task.id, 'step.checkpointed', { stepId: step.id });
+            },
+          });
           step.status = 'succeeded';
           delete step.error;
           this.touch(task);

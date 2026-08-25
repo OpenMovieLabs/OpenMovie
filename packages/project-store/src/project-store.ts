@@ -15,6 +15,7 @@ import type Database from 'better-sqlite3';
 
 import { openProjectDatabase } from './database.js';
 import { writeFileAtomic } from './fs.js';
+import { ProjectDoctor } from './doctor.js';
 import { ProjectLock } from './lock.js';
 import { MediaRepository } from './media-repository.js';
 import { MovieWorkspace } from './movie-workspace.js';
@@ -43,6 +44,7 @@ export class ProjectStore {
   readonly taskPersistence: SqliteTaskPersistence;
   readonly movies: MovieWorkspace;
   readonly media: MediaRepository;
+  readonly doctor: ProjectDoctor;
 
   private closed = false;
 
@@ -59,6 +61,7 @@ export class ProjectStore {
     this.taskPersistence = new SqliteTaskPersistence(database);
     this.movies = new MovieWorkspace(root, this.revisions);
     this.media = new MediaRepository(database, this.movies);
+    this.doctor = new ProjectDoctor(root, manifest, database, this.objects, this.revisions);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {

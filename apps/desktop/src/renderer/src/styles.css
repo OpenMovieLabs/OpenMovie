@@ -431,13 +431,26 @@ h1 {
 }
 .take-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   padding: 9px 10px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.16);
+}
+.take-preview {
+  width: 96px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: #050505;
+}
+.take-preview-slot {
+  width: 96px;
+  min-height: 54px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.025);
 }
 .take-row[data-selected='true'] {
   border-color: rgba(202, 151, 82, 0.45);
@@ -497,6 +510,38 @@ h1 {
 }
 .placeholder-panel p {
   color: #85827b;
+}
+.doctor-actions {
+  display: flex;
+  gap: 10px;
+  margin: 24px 0;
+}
+.doctor-report {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.doctor-report[data-status='healthy'] > strong {
+  color: #7bbf88;
+}
+.doctor-report[data-status='warning'] > strong {
+  color: #d8a85d;
+}
+.doctor-report[data-status='failed'] > strong {
+  color: #e27272;
+}
+.doctor-issue {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  color: #aaa59c;
+  font-size: 12px;
+}
+.doctor-issue code {
+  color: #d8a85d;
 }
 .revision-list {
   display: flex;

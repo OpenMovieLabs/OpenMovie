@@ -1,5 +1,6 @@
 import type {
   CoreHealth,
+  DoctorReport,
   BranchRecord,
   FileDiff,
   HarnessHealth,
@@ -22,6 +23,7 @@ export type OpenMovieDesktopApi = {
   createProject: (title: string) => Promise<ProjectSummary | null>;
   openProject: () => Promise<ProjectSummary | null>;
   getProjectSummary: () => Promise<ProjectSummary>;
+  runDoctor: (deep?: boolean) => Promise<DoctorReport>;
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
@@ -48,8 +50,10 @@ export type OpenMovieDesktopApi = {
     requiresApproval?: boolean,
     targetShotId?: string,
     mediaKind?: 'image' | 'video',
+    mediaProviderId?: string,
   ) => Promise<TaskRunResult>;
   listTasks: () => Promise<Task[]>;
+  cancelTask: (taskId: string) => Promise<Task>;
   approveTask: (taskId: string) => Promise<TaskRunResult>;
   listTaskEvents: (taskId: string, afterSequence?: number) => Promise<TaskEvent[]>;
   listSecrets: () => Promise<SecretMetadata[]>;
@@ -95,7 +99,7 @@ export type ProviderProfile = {
   id: string;
   label: string;
   baseUrl: string;
-  protocol: 'openai_chat' | 'openai_responses' | 'custom';
+  protocol: 'openai_chat' | 'openai_responses' | 'openai_images' | 'http_video_jobs' | 'custom';
   model: string;
   secretId: string;
   hasSecret: boolean;
@@ -117,6 +121,8 @@ const api: OpenMovieDesktopApi = {
   openProject: () => ipcRenderer.invoke('openmovie:project-open') as Promise<ProjectSummary | null>,
   getProjectSummary: () =>
     ipcRenderer.invoke('openmovie:project-summary') as Promise<ProjectSummary>,
+  runDoctor: (deep) =>
+    ipcRenderer.invoke('openmovie:project-doctor', deep) as Promise<DoctorReport>,
   renameProject: (title) =>
     ipcRenderer.invoke('openmovie:project-rename', title) as Promise<ProjectSummary>,
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,
@@ -149,7 +155,7 @@ const api: OpenMovieDesktopApi = {
     ipcRenderer.invoke('openmovie:take-select', takeId) as Promise<TakeSelectionResult>,
   listEvaluations: (takeId) =>
     ipcRenderer.invoke('openmovie:evaluation-list', takeId) as Promise<EvaluationRecord[]>,
-  runTask: (goal, plannerProviderId, requiresApproval, targetShotId, mediaKind) =>
+  runTask: (goal, plannerProviderId, requiresApproval, targetShotId, mediaKind, mediaProviderId) =>
     ipcRenderer.invoke(
       'openmovie:task-run',
       goal,
@@ -157,8 +163,10 @@ const api: OpenMovieDesktopApi = {
       requiresApproval,
       targetShotId,
       mediaKind,
+      mediaProviderId,
     ) as Promise<TaskRunResult>,
   listTasks: () => ipcRenderer.invoke('openmovie:task-list') as Promise<Task[]>,
+  cancelTask: (taskId) => ipcRenderer.invoke('openmovie:task-cancel', taskId) as Promise<Task>,
   approveTask: (taskId) =>
     ipcRenderer.invoke('openmovie:task-approve', taskId) as Promise<TaskRunResult>,
   listTaskEvents: (taskId, afterSequence) =>

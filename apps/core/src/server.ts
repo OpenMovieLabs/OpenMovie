@@ -9,8 +9,10 @@ import {
 import { ProjectStore, ProjectStoreError } from '@openmovie/project-store';
 import {
   FakeProvider,
+  HttpVideoJobProvider,
   OpenAICompatibleProvider,
   ProviderGateway,
+  type ProviderJob,
 } from '@openmovie/provider-gateway';
 import {
   ClaudeCodeDetector,
@@ -21,9 +23,10 @@ import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { movieEntitySchema } from '@openmovie/movie-ir';
 import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
 import type { StoredObject, TakeRecord } from '@openmovie/project-store';
+import packageMetadata from '../package.json' with { type: 'json' };
 
 const startedAt = new Date();
-const coreVersion = '0.0.0';
+const coreVersion = packageMetadata.version;
 
 function failure(id: string, code: string, message: string, retryable = false): CoreResponse {
   return { id, ok: false, error: { code, message, retryable } };
@@ -87,8 +90,8 @@ export class CoreServer {
       const generated = await provider.generateImage({
         model: typeof input.model === 'string' ? input.model : 'fake-image-v1',
         prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
-        width: 1,
-        height: 1,
+        width: typeof input.width === 'number' ? input.width : 1024,
+        height: typeof input.height === 'number' ? input.height : 1024,
         signal: context.signal,
       });
       const object = await project.objects.importBytes(generated.bytes, 'generated.png');
@@ -132,17 +135,42 @@ export class CoreServer {
       if (!provider.submitVideo || !provider.getVideoJob || !provider.collectVideo) {
         throw new Error(`Provider cannot generate videos: ${providerId}`);
       }
-      let job = await provider.submitVideo({
-        model: typeof input.model === 'string' ? input.model : 'fake-video-v1',
-        prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
-        mode: 'text_to_video',
-        durationSeconds: typeof input.durationSeconds === 'number' ? input.durationSeconds : 4,
-        signal: context.signal,
-      });
-      for (let attempt = 0; ['queued', 'running'].includes(job.status); attempt += 1) {
-        if (attempt >= 600) throw new Error(`Video job timed out: ${job.id}`);
-        await this.waitForPoll(context.signal);
-        job = await provider.getVideoJob(job.id, context.signal);
+      const checkpoint =
+        typeof context.step.output === 'object' &&
+        context.step.output !== null &&
+        'providerJobId' in context.step.output &&
+        typeof context.step.output.providerJobId === 'string'
+          ? context.step.output.providerJobId
+          : undefined;
+      let job: ProviderJob | undefined;
+      if (checkpoint) {
+        try {
+          job = await provider.getVideoJob(checkpoint, context.signal);
+        } catch {
+          job = undefined;
+        }
+      }
+      if (!job) {
+        job = await provider.submitVideo({
+          model: typeof input.model === 'string' ? input.model : 'fake-video-v1',
+          prompt: typeof input.prompt === 'string' ? input.prompt : context.task.goal,
+          mode: 'text_to_video',
+          durationSeconds: typeof input.durationSeconds === 'number' ? input.durationSeconds : 4,
+          signal: context.signal,
+        });
+        context.checkpoint({ providerJobId: job.id, providerId });
+      }
+      try {
+        for (let attempt = 0; ['queued', 'running'].includes(job.status); attempt += 1) {
+          if (attempt >= 600) throw new Error(`Video job timed out: ${job.id}`);
+          await this.waitForPoll(context.signal);
+          job = await provider.getVideoJob(job.id, context.signal);
+        }
+      } catch (error) {
+        if (context.signal.aborted && provider.cancelVideo) {
+          await provider.cancelVideo(job.id).catch(() => undefined);
+        }
+        throw error;
       }
       if (job.status !== 'succeeded') throw new Error(job.error ?? `Video job ${job.status}`);
       const generated = (await provider.collectVideo(job.id, context.signal))[0];
@@ -221,6 +249,7 @@ export class CoreServer {
               'core.health',
               'project.create',
               'project.open',
+              'project.doctor',
               'revision.commit',
               'revision.branch',
               'movie.entity',
@@ -266,6 +295,12 @@ export class CoreServer {
         return { id: command.id, ok: true, result: null };
       case 'project.get_summary':
         return { id: command.id, ok: true, result: await this.summary() };
+      case 'project.doctor':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.requireProject().doctor.run({ deep: command.params.deep }),
+        };
       case 'revision.commit': {
         const project = this.requireProject();
         const revision = await project.revisions.commit(command.params);
@@ -405,9 +440,11 @@ export class CoreServer {
                   : 'Generate an image Take',
               input: {
                 prompt: command.params.goal,
-                providerId: 'fake',
-                model: command.params.mediaKind === 'video' ? 'fake-video-v1' : 'fake-image-v1',
+                providerId: command.params.mediaProviderId,
+                model: command.params.mediaModel,
                 durationSeconds,
+                width: 1024,
+                height: 1024,
                 ...(command.params.targetShotId ? { shotId: command.params.targetShotId } : {}),
               },
             },
@@ -442,6 +479,17 @@ export class CoreServer {
             id: command.params.id,
             baseUrl: command.params.baseUrl,
             apiKey: command.params.apiKey,
+            imageGeneration: command.params.imageGeneration,
+          }),
+        );
+        return { id: command.id, ok: true, result: { id: command.params.id } };
+      case 'provider.configure_http_video':
+        this.providers.upsert(
+          new HttpVideoJobProvider({
+            id: command.params.id,
+            baseUrl: command.params.baseUrl,
+            apiKey: command.params.apiKey,
+            path: command.params.path,
           }),
         );
         return { id: command.id, ok: true, result: { id: command.params.id } };

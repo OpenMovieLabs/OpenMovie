@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer without v prefix
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: mac
+          - os: windows-2025
+            target: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "OPENMOVIE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "OPENMOVIE_VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+          fi
+      - run: node scripts/set-version.mjs "$OPENMOVIE_VERSION"
+        shell: bash
+      - run: pnpm check
+      - run: pnpm build
+      - name: Package desktop
+        run: pnpm --filter @openmovie/desktop exec electron-builder --${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenMovie-${{ matrix.target }}-${{ env.OPENMOVIE_VERSION }}
+          path: |
+            release/${{ env.OPENMOVIE_VERSION }}/*.dmg
+            release/${{ env.OPENMOVIE_VERSION }}/*.zip
+            release/${{ env.OPENMOVIE_VERSION }}/*.exe
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --generate-notes --verify-tag

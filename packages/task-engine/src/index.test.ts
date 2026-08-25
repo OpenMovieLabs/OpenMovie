@@ -74,4 +74,25 @@ describe('TaskEngine', () => {
     expect(recovered.steps[0]?.status).toBe('failed');
     expect(persistence.listEvents('task_interrupted')[0]?.type).toBe('task.recovered');
   });
+
+  it('persists step checkpoints so asynchronous jobs can resume on retry', async () => {
+    const persistence = new MemoryTaskPersistence();
+    const engine = new TaskEngine(persistence);
+    engine.registerStep('remote-job', (_input, context) => {
+      if (context.step.output) return Promise.resolve({ resumed: context.step.output });
+      context.checkpoint({ providerJobId: 'job_123' });
+      return Promise.reject(new Error('connection interrupted'));
+    });
+    const task = engine.create('Run remote job', [
+      { kind: 'remote-job', title: 'Remote job', input: {} },
+    ]);
+    expect((await engine.run(task.id)).status).toBe('failed');
+    expect(engine.get(task.id).steps[0]?.output).toEqual({ providerJobId: 'job_123' });
+    const retried = await engine.run(task.id);
+    expect(retried.status).toBe('succeeded');
+    expect(retried.steps[0]?.output).toEqual({ resumed: { providerJobId: 'job_123' } });
+    expect(engine.listEvents(task.id).some((event) => event.type === 'step.checkpointed')).toBe(
+      true,
+    );
+  });
 });
