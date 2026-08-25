@@ -96,7 +96,7 @@ interface CoreCommand<T = unknown> {
 
 - Project：`project.create`、`project.open`、`project.get_summary`、`project.doctor`。
 - Revision：commit、list、diff、working changes、restore、branch create/list/switch。
-- Movie IR：Brief、Story Bible、Character、Scene、Shot、Screenplay 和 Timeline 的读取、创建、装配与乐观并发更新。
+- Movie IR：Brief、Story Bible、Character、Scene、Shot、Screenplay 和 Timeline 的读取、创建、装配、Current Cut Render 与乐观并发更新。
 - Media：Object import、Take list/select、Evaluation list、图片/视频分析及带证据的 Analysis list。
 - Feedback：绑定 Project、Scene、Shot、Take 或 Revision 的创建、查询与解决状态。
 - Task：create、run、list、events、approve、cancel。
@@ -384,6 +384,7 @@ Tool 名称采用 namespace.action，例如 shot.get、shot.propose_patch。
 - shot_create / openmovie_shot_create
 - branch_list、branch_create、branch_switch
 - story_get、story_update、timeline_get、timeline_assemble
+- timeline_render_list
 - take_list、evaluation_list、analysis_list
 - feedback_list、feedback_create
 
@@ -481,6 +482,8 @@ interface ProviderProfile {
 ```
 
 内置桌面配置当前区分 `openai_chat`、`openai_images` 和 `http_video_jobs`，避免把“URL 看起来兼容”误当成能力兼容。Secret 只保存在应用级系统加密数据库中，Project 与 Renderer 只看到 Profile ID 和掩码状态。
+
+桌面端 Provider Probe 对 OpenAI-compatible Profile 调用标准 `models` 端点，对异步 Video Profile 使用无费用的 `HEAD` 检查。Probe 禁止自动跟随重定向，只向用户保存的 Origin 发送凭据，且返回稳定脱敏错误，不返回响应正文或 Header。
 
 credentialRefs 只能是 Secret Ref，不接受明文。
 

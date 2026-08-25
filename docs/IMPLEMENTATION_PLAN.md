@@ -25,7 +25,7 @@ Desktop 启动
 
 每个后续阶段都保持这条主路径可运行。
 
-当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
+当前可运行基线已覆盖 M0–M4 的核心路径，以及 M5 的媒体反馈闭环：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 H.264 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、MCP、加密 Provider Secret、Provider 无费用连通性检查、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、受限媒体预览、选片 Revision、Project Doctor、CLI 导出和 Windows/macOS 发布工作流。后续条目仍以各 Milestone Exit Criteria 为准，不因局部实现而提前视为完成。
 
 ## 2. 工程约束
 

@@ -33,6 +33,16 @@ describe('EncryptedSecretStore', () => {
       secretId: 'provider.openrouter',
     });
     expect(profile.hasSecret).toBe(true);
+    expect(() =>
+      store.setProviderProfile({
+        id: 'unsafe',
+        label: 'Unsafe',
+        baseUrl: 'https://user:password@example.com/v1/',
+        protocol: 'openai_chat',
+        model: 'model',
+        secretId: 'provider.openrouter',
+      }),
+    ).toThrow('cannot contain credentials');
     store.rememberProject('/movies/opening', 'Opening');
     expect(store.listRecentProjects()).toEqual([
       expect.objectContaining({ path: '/movies/opening', title: 'Opening' }),

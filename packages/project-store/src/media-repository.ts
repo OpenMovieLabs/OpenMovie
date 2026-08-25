@@ -47,6 +47,17 @@ export type AnalysisRecord = {
   createdAt: string;
 };
 
+export type TimelineRenderRecord = {
+  id: string;
+  sourceRevisionId: string;
+  timelineRevision: number;
+  objectUri: string;
+  mimeType: string;
+  byteSize: number;
+  durationUs: number;
+  createdAt: string;
+};
+
 export class MediaRepository {
   constructor(
     private readonly database: Database.Database,
@@ -299,6 +310,71 @@ export class MediaRepository {
       summary: row.summary,
       evidence: JSON.parse(row.evidence_json) as Array<Record<string, unknown>>,
       provenance: JSON.parse(row.provenance_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    }));
+  }
+
+  recordTimelineRender(input: {
+    sourceRevisionId: string;
+    timelineRevision: number;
+    object: StoredObject;
+    durationUs: number;
+  }): TimelineRenderRecord {
+    const record: TimelineRenderRecord = {
+      id: createId('render'),
+      sourceRevisionId: input.sourceRevisionId,
+      timelineRevision: input.timelineRevision,
+      objectUri: input.object.uri,
+      mimeType: input.object.mimeType,
+      byteSize: input.object.byteSize,
+      durationUs: input.durationUs,
+      createdAt: new Date().toISOString(),
+    };
+    this.database
+      .prepare(
+        `INSERT INTO timeline_renders(
+          id, source_revision_id, timeline_revision, object_uri, mime_type,
+          byte_size, duration_us, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.id,
+        record.sourceRevisionId,
+        record.timelineRevision,
+        record.objectUri,
+        record.mimeType,
+        record.byteSize,
+        record.durationUs,
+        record.createdAt,
+      );
+    return record;
+  }
+
+  listTimelineRenders(): TimelineRenderRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT id, source_revision_id, timeline_revision, object_uri, mime_type,
+          byte_size, duration_us, created_at
+         FROM timeline_renders ORDER BY created_at DESC`,
+      )
+      .all() as Array<{
+      id: string;
+      source_revision_id: string;
+      timeline_revision: number;
+      object_uri: string;
+      mime_type: string;
+      byte_size: number;
+      duration_us: number;
+      created_at: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      sourceRevisionId: row.source_revision_id,
+      timelineRevision: row.timeline_revision,
+      objectUri: row.object_uri,
+      mimeType: row.mime_type,
+      byteSize: row.byte_size,
+      durationUs: row.duration_us,
       createdAt: row.created_at,
     }));
   }

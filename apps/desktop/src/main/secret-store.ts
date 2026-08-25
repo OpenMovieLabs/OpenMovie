@@ -116,6 +116,9 @@ export class EncryptedSecretStore {
   ): ProviderProfile {
     if (!/^[a-z][a-z0-9_.-]{2,127}$/.test(input.id)) throw new Error('Invalid provider ID');
     const url = new URL(input.baseUrl);
+    if (url.username || url.password)
+      throw new Error('Provider endpoint cannot contain credentials');
+    if (url.hash) throw new Error('Provider endpoint cannot contain a URL fragment');
     if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
       throw new Error('Provider endpoint must use HTTPS unless it is localhost');
     }

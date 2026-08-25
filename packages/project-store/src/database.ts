@@ -183,6 +183,23 @@ const migrations = [
         ON analyses(take_id, created_at DESC);
     `,
   },
+  {
+    version: 7,
+    sql: `
+      CREATE TABLE IF NOT EXISTS timeline_renders (
+        id TEXT PRIMARY KEY,
+        source_revision_id TEXT NOT NULL,
+        timeline_revision INTEGER NOT NULL,
+        object_uri TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        duration_us INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS timeline_renders_created
+        ON timeline_renders(created_at DESC);
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

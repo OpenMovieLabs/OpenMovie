@@ -275,6 +275,8 @@ Take 和其 Artifact 不可变。选择 Take 只修改 Shot.selected_take 或 Ti
 
 对 Take 的 Evaluation、Multimodal Analysis 与 Feedback 保存在 SQLite。Analysis 记录模型、摘要、证据、关键帧时间码和 Provenance；它不修改不可变 Artifact。
 
+Current Cut Render 同样是不可变对象。`timeline_renders` 记录源 Project Revision、Timeline entity revision、对象 URI、时长、MIME 和字节数；重复渲染产生新记录，不覆盖旧成片。
+
 ## 12. Asset Manifest
 
 ```yaml
@@ -389,6 +391,7 @@ object_refs
 takes
 evaluations
 analyses
+timeline_renders
 feedback
 events
 schema_migrations

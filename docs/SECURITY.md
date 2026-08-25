@@ -233,6 +233,8 @@ Restricted 数据不允许外发。
 - 下载结果限制协议、域名、大小和次数。
 - 临时 URL 不写入长期日志。
 - TLS 验证不能在普通模式关闭。
+- Provider 连通性测试不生成内容、不记录响应正文，禁止自动跟随重定向，并将错误归一化后再返回 Renderer。
+- Provider Base URL 拒绝内嵌 username/password 和 URL fragment。
 
 本地 Provider 使用独立 Local Provider 开关，并提示其可以访问本机接口。
 

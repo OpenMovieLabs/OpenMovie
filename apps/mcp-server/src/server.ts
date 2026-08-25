@@ -201,6 +201,15 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
   );
 
   server.registerTool(
+    'timeline_render_list',
+    {
+      description: 'List rendered Current Cut artifacts and their source Revisions.',
+      inputSchema: z.object({}),
+    },
+    () => Promise.resolve(result({ renders: project.media.listTimelineRenders() })),
+  );
+
+  server.registerTool(
     'take_list',
     {
       description: 'List immutable generated Takes and provenance for a Shot.',

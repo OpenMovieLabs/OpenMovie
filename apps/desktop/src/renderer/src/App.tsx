@@ -26,9 +26,15 @@ import type {
   Task,
   TakeRecord,
   EvaluationRecord,
+  TimelineRenderRecord,
 } from '@openmovie/contracts';
 import type { Character, Scene, Shot, Timeline } from '@openmovie/movie-ir';
-import type { ProviderProfile, RecentProject, StoryDocuments } from '../../preload/index.js';
+import type {
+  ProviderProbe,
+  ProviderProfile,
+  RecentProject,
+  StoryDocuments,
+} from '../../preload/index.js';
 
 type RuntimeState =
   | { kind: 'loading' }
@@ -57,6 +63,7 @@ export function App(): React.JSX.Element {
   const [shots, setShots] = useState<Shot[]>([]);
   const [story, setStory] = useState<StoryDocuments | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
+  const [timelineRenders, setTimelineRenders] = useState<TimelineRenderRecord[]>([]);
   const [takesByShot, setTakesByShot] = useState<Record<string, TakeRecord[]>>({});
   const [evaluationsByTake, setEvaluationsByTake] = useState<Record<string, EvaluationRecord[]>>(
     {},
@@ -70,6 +77,7 @@ export function App(): React.JSX.Element {
   const [showTask, setShowTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [providerProbes, setProviderProbes] = useState<Record<string, ProviderProbe>>({});
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [providerForm, setProviderForm] = useState({
     id: 'openrouter',
@@ -179,6 +187,7 @@ export function App(): React.JSX.Element {
       nextWorkingChanges,
       nextStory,
       nextTimeline,
+      nextTimelineRenders,
       nextProviders,
     ] = await Promise.all([
       window.openMovie.listRevisions(),
@@ -190,6 +199,7 @@ export function App(): React.JSX.Element {
       window.openMovie.getWorkingChanges(),
       window.openMovie.getStory(),
       window.openMovie.getTimeline(),
+      window.openMovie.listTimelineRenders(),
       window.openMovie.listProviders(),
     ]);
     setRevisions(nextRevisions);
@@ -228,6 +238,7 @@ export function App(): React.JSX.Element {
     setWorkingChanges(nextWorkingChanges);
     setStory(nextStory);
     setTimeline(nextTimeline);
+    setTimelineRenders(nextTimelineRenders);
     setProviders(nextProviders);
     setStoryPremise(nextStory.brief.premise);
     setStoryThemes(nextStory.bible.themes.join(', '));
@@ -350,6 +361,14 @@ export function App(): React.JSX.Element {
     });
   };
 
+  const renderTimeline = (): void => {
+    void run(async () => {
+      const task = await window.openMovie.renderTimeline();
+      setLastTask(task);
+      setSection('Overview');
+    });
+  };
+
   const runTask = (): void => {
     void run(async () => {
       const result = await window.openMovie.runTask(
@@ -440,6 +459,13 @@ export function App(): React.JSX.Element {
       await window.openMovie.saveProvider(providerForm);
       setProviders(await window.openMovie.listProviders());
       setProviderForm((current) => ({ ...current, apiKey: '' }));
+    });
+  };
+
+  const testProvider = (providerId: string): void => {
+    void run(async () => {
+      const probe = await window.openMovie.testProvider(providerId);
+      setProviderProbes((current) => ({ ...current, [providerId]: probe }));
     });
   };
 
@@ -954,13 +980,26 @@ export function App(): React.JSX.Element {
                   Timeline clips reference Shots and immutable Takes. Rebuilding the cut creates a
                   reviewable Revision and never overwrites generated media.
                 </p>
-                <button
-                  className="primary"
-                  disabled={busy || shots.length === 0}
-                  onClick={assembleTimeline}
-                >
-                  Assemble from shots
-                </button>
+                <div className="timeline-actions">
+                  <button
+                    className="secondary"
+                    disabled={busy || shots.length === 0}
+                    onClick={assembleTimeline}
+                  >
+                    Assemble from shots
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={
+                      busy ||
+                      (timeline?.video_tracks[0]?.clips.length ?? 0) === 0 ||
+                      (timeline?.video_tracks[0]?.clips ?? []).some((clip) => !clip.take)
+                    }
+                    onClick={renderTimeline}
+                  >
+                    Render current cut
+                  </button>
+                </div>
                 <div className="timeline-track">
                   {(timeline?.video_tracks[0]?.clips ?? []).map((clip) => {
                     const shot = shots.find((item) => item.id === clip.shot);
@@ -986,6 +1025,21 @@ export function App(): React.JSX.Element {
                     );
                   })}
                 </div>
+                {timelineRenders[0] && (
+                  <div className="current-render">
+                    <span className="section-label">LATEST RENDER</span>
+                    <video
+                      src={artifactUrl(timelineRenders[0].objectUri)}
+                      controls
+                      preload="metadata"
+                    />
+                    <span>
+                      Revision {timelineRenders[0].sourceRevisionId.slice(-8)} ·{' '}
+                      {(timelineRenders[0].durationUs / 1_000_000).toFixed(1)}s ·{' '}
+                      {(timelineRenders[0].byteSize / 1_048_576).toFixed(1)} MiB
+                    </span>
+                  </div>
+                )}
               </article>
             ) : section === 'Tests' ? (
               <article className="placeholder-panel doctor-panel">
@@ -1255,10 +1309,25 @@ export function App(): React.JSX.Element {
                   <span>
                     {provider.protocol} · {provider.model || provider.baseUrl}
                   </span>
+                  {providerProbes[provider.id] && (
+                    <span className={`probe-result ${providerProbes[provider.id]?.status}`}>
+                      {providerProbes[provider.id]?.message} ·{' '}
+                      {providerProbes[provider.id]?.latencyMs} ms
+                    </span>
+                  )}
                 </div>
-                <span className={provider.hasSecret ? 'key-state ready' : 'key-state'}>
-                  {provider.hasSecret ? 'Key saved' : 'No key'}
-                </span>
+                <div className="provider-actions">
+                  <span className={provider.hasSecret ? 'key-state ready' : 'key-state'}>
+                    {provider.hasSecret ? 'Key saved' : 'No key'}
+                  </span>
+                  <button
+                    className="secondary compact"
+                    disabled={busy || !provider.hasSecret}
+                    onClick={() => testProvider(provider.id)}
+                  >
+                    Test
+                  </button>
+                </div>
               </div>
             ))}
             <div className="provider-form">

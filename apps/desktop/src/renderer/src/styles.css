@@ -668,6 +668,32 @@ h1 {
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.2);
 }
+
+.timeline-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.current-render {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.current-render video {
+  width: min(100%, 820px);
+  max-height: 460px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: #080808;
+}
+
+.current-render > span:last-child {
+  color: #77746e;
+  font-size: 11px;
+}
 .timeline-clip {
   flex: 0 0 190px;
   padding: 9px;
@@ -904,6 +930,26 @@ h1 {
   padding: 12px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
+
+.provider-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.probe-result {
+  color: #77746e;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.provider-row .probe-result.ready {
+  color: #82b98a;
+}
+
+.provider-row .probe-result.error {
+  color: #d9897f;
+}
 .provider-row strong,
 .provider-row span {
   display: block;
@@ -919,6 +965,11 @@ h1 {
 }
 .key-state.ready {
   color: #82b98a;
+}
+.secondary.compact {
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 11px;
 }
 .provider-form {
   display: grid;

@@ -14,7 +14,7 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 ## Status
 
-Active implementation. The desktop vertical slice now covers portable Movie IR projects, Brief/Story Bible editing, Scene/Shot authoring, deterministic Timeline assembly, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers, asynchronous video-provider jobs, immutable image/video Takes, multimodal Take analysis, deterministic evaluations, structured feedback, Take selection, structured diffs, and creative branches.
+Active implementation. The desktop vertical slice now covers portable Movie IR projects, Brief/Story Bible editing, Scene/Shot authoring, deterministic Timeline assembly and MP4 Current Cut rendering, recoverable tasks, local Codex App Server and MCP integrations, OpenAI-compatible providers with credential-safe connection tests, asynchronous video-provider jobs, immutable image/video Takes, multimodal Take analysis, deterministic evaluations, structured feedback, Take selection, structured diffs, and creative branches.
 
 ## Documentation
 
@@ -54,6 +54,8 @@ Run `pnpm smoke:desktop` for the self-closing Electron integration test. It veri
 
 Video analysis samples deterministic keyframes with FFmpeg and submits those frames through the configured vision-capable Provider. Development builds discover `ffmpeg` on `PATH`; set `OPENMOVIE_FFMPEG_PATH` to an explicit executable when necessary. Image analysis does not require FFmpeg.
 
+The Timeline can render selected image and video Takes into a normalized H.264 MP4. Every render records its exact source Revision, Timeline revision, duration, object URI, and content hash. The Desktop previews the latest render without exposing arbitrary local paths.
+
 ### CLI and project integrity
 
 The CLI uses the same Project Store and Revision engine as Desktop:
@@ -62,6 +64,7 @@ The CLI uses the same Project Store and Revision engine as Desktop:
 pnpm cli doctor /absolute/path/to/MyMovie --deep
 pnpm cli summary /absolute/path/to/MyMovie --json
 pnpm cli export /absolute/path/to/MyMovie /absolute/path/to/MyMovie-export
+pnpm cli renders /absolute/path/to/MyMovie --json
 ```
 
 Project Doctor validates Movie IR schemas and references, selected Takes, SQLite integrity, content-addressed objects, and working changes. The same checks are available in Desktop under **Tests**.
@@ -80,7 +83,7 @@ For external Codex, Claude Code, or any MCP host, start the standalone stdio ser
 pnpm mcp --project /absolute/path/to/MyMovie
 ```
 
-The MCP server exposes project/entity reads, Story editing, Timeline assembly, Take/evaluation/analysis/feedback inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. It never exposes Provider API keys.
+The MCP server exposes project/entity reads, Story editing, Timeline assembly and render inspection, Take/evaluation/analysis/feedback inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. It never exposes Provider API keys.
 
 ## Repository
 

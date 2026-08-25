@@ -20,6 +20,7 @@ import {
   taskSchema,
   taskEventSchema,
   takeRecordSchema,
+  timelineRenderRecordSchema,
 } from '@openmovie/contracts';
 import {
   briefSchema,
@@ -31,6 +32,7 @@ import {
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } from 'electron';
 
 import { CoreClient } from './core-client.js';
+import { probeProvider } from './provider-probe.js';
 import { EncryptedSecretStore } from './secret-store.js';
 
 let core: CoreClient | undefined;
@@ -455,6 +457,31 @@ void app
         revision: revisionRecordSchema.parse('revision' in value ? value.revision : undefined),
       };
     });
+    ipcMain.handle('openmovie:timeline-render-list', async () =>
+      timelineRenderRecordSchema
+        .array()
+        .parse(await core?.request({ method: 'timeline.render_list', params: {} })),
+    );
+    ipcMain.handle('openmovie:timeline-render', async () => {
+      const summary = projectSummarySchema.parse(
+        await core?.request({ method: 'project.get_summary', params: {} }),
+      );
+      if (!summary.currentRevisionId) throw new Error('Project has no current Revision');
+      const task = taskSchema.parse(
+        await core?.request({
+          method: 'timeline.render_create_task',
+          params: { sourceRevisionId: summary.currentRevisionId },
+        }),
+      );
+      void core
+        ?.request({ method: 'task.run', params: { taskId: task.id } }, 60 * 60_000)
+        .catch((error: unknown) => {
+          process.stderr.write(
+            `[render] Background render failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+        });
+      return task;
+    });
     ipcMain.handle(
       'openmovie:task-run',
       async (
@@ -793,6 +820,14 @@ void app
         secretId,
       });
     });
+    ipcMain.handle('openmovie:provider-test', async (_event, providerId: unknown) => {
+      if (typeof providerId !== 'string') throw new Error('Provider ID is required');
+      if (!secrets) throw new Error('Secret Store is unavailable');
+      const profile = secrets.listProviderProfiles().find((item) => item.id === providerId);
+      if (!profile) throw new Error('Provider profile not found');
+      const apiKey = await secrets.get(profile.secretId);
+      return probeProvider(profile, apiKey, (input, init) => net.fetch(input, init));
+    });
 
     await initialize();
     if (process.env.OPENMOVIE_SMOKE_TEST === '1') {
@@ -895,6 +930,30 @@ void app
         analysisRecordSchema
           .array()
           .parse(await core.request({ method: 'analysis.list', params: { takeId: firstTake.id } }));
+        const beforeSelection = projectSummarySchema.parse(
+          await core.request({ method: 'project.get_summary', params: {} }),
+        );
+        await core.request({
+          method: 'take.select',
+          params: {
+            takeId: firstTake.id,
+            expectedRevisionId: beforeSelection.currentRevisionId,
+            authorId: 'smoke_test',
+          },
+        });
+        const beforeTimeline = projectSummarySchema.parse(
+          await core.request({ method: 'project.get_summary', params: {} }),
+        );
+        await core.request({
+          method: 'timeline.assemble',
+          params: {
+            expectedRevisionId: beforeTimeline.currentRevisionId,
+            authorId: 'smoke_test',
+          },
+        });
+        timelineRenderRecordSchema
+          .array()
+          .parse(await core.request({ method: 'timeline.render_list', params: {} }));
         await core.request({ method: 'project.close', params: {} });
       } finally {
         await rm(temporaryRoot, { recursive: true, force: true });

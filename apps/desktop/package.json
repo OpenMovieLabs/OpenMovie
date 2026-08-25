@@ -66,12 +66,14 @@
     ],
     "mac": {
       "category": "public.app-category.video",
+      "icon": "resources/icon.png",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "win": {
+      "icon": "resources/icon.png",
       "target": [
         "nsis",
         "portable"

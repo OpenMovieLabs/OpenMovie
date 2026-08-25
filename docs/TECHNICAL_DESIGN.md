@@ -177,6 +177,8 @@ SQLite 驱动封装在 Storage Port 后。若 better-sqlite3 无法通过目标 
 
 当前视频分析实现按 Shot 微秒时长确定性抽取四个关键帧，将每帧作为标准 OpenAI-compatible 多模态输入提交给视觉 Provider，并把带时间码的摘要、证据和模型 Provenance 持久化。图片分析直接读取受大小限制的对象，不依赖 FFmpeg。
 
+Current Cut Renderer 读取 Timeline 的选定 Take，检查其 Shot 归属和源 Revision，将图片/视频 Clip 逐段缩放、Letterbox、帧率归一化并编码为 H.264/yuv420p；视频源音频被统一为 AAC，静态图或无音轨视频补入等长静音，随后无重编码拼接。渲染通过可取消、可恢复 Task 执行，结果进入内容寻址对象库并保存 Render Record。
+
 ## 5. 推荐仓库结构
 
 ```text

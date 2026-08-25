@@ -201,6 +201,16 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
+    method: z.literal('timeline.render_create_task'),
+    params: z.object({ sourceRevisionId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('timeline.render_list'),
+    params: z.object({}).default({}),
+  }),
+  z.object({
+    id: commandIdSchema,
     method: z.literal('object.import'),
     params: z.object({ path: z.string().min(1) }),
   }),
@@ -494,6 +504,17 @@ export const analysisRecordSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const timelineRenderRecordSchema = z.object({
+  id: z.string(),
+  sourceRevisionId: z.string(),
+  timelineRevision: z.number().int().nonnegative(),
+  objectUri: z.string().regex(/^om:\/\/object\/sha256\/[a-f0-9]{64}$/),
+  mimeType: z.string(),
+  byteSize: z.number().int().nonnegative(),
+  durationUs: z.number().int().positive(),
+  createdAt: z.string().datetime(),
+});
+
 export const taskStepSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -574,6 +595,7 @@ export type TakeRecord = z.infer<typeof takeRecordSchema>;
 export type EvaluationRecord = z.infer<typeof evaluationRecordSchema>;
 export type FeedbackRecord = z.infer<typeof feedbackRecordSchema>;
 export type AnalysisRecord = z.infer<typeof analysisRecordSchema>;
+export type TimelineRenderRecord = z.infer<typeof timelineRenderRecordSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskEvent = z.infer<typeof taskEventSchema>;
 export type HarnessHealth = z.infer<typeof harnessHealthSchema>;

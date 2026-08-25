@@ -14,6 +14,7 @@ import type {
   TakeRecord,
   EvaluationRecord,
   FeedbackRecord,
+  TimelineRenderRecord,
 } from '@openmovie/contracts';
 import type {
   Brief,
@@ -58,6 +59,8 @@ export type OpenMovieDesktopApi = {
   updateStory: (input: StoryUpdateInput) => Promise<StoryUpdateResult>;
   getTimeline: () => Promise<Timeline>;
   assembleTimeline: () => Promise<TimelineUpdateResult>;
+  renderTimeline: () => Promise<Task>;
+  listTimelineRenders: () => Promise<TimelineRenderRecord[]>;
   listTakes: (shotId: string) => Promise<TakeRecord[]>;
   selectTake: (takeId: string) => Promise<TakeSelectionResult>;
   listEvaluations: (takeId: string) => Promise<EvaluationRecord[]>;
@@ -91,6 +94,7 @@ export type OpenMovieDesktopApi = {
   listHarnesses: () => Promise<HarnessHealth[]>;
   listProviders: () => Promise<ProviderProfile[]>;
   saveProvider: (input: SaveProviderInput) => Promise<ProviderProfile>;
+  testProvider: (providerId: string) => Promise<ProviderProbe>;
 };
 
 export type TaskRunResult = {
@@ -151,6 +155,16 @@ export type SaveProviderInput = Pick<
   'id' | 'label' | 'baseUrl' | 'protocol' | 'model'
 > & { apiKey: string };
 
+export type ProviderProbe = {
+  profileId: string;
+  status: 'ready' | 'error';
+  latencyMs: number;
+  checkedAt: string;
+  message: string;
+  capabilities: string[];
+  modelVisible?: boolean;
+};
+
 const api: OpenMovieDesktopApi = {
   initialize: () => ipcRenderer.invoke('openmovie:initialize') as Promise<InitializeResult>,
   coreHealth: () => ipcRenderer.invoke('openmovie:core-health') as Promise<CoreHealth>,
@@ -199,6 +213,9 @@ const api: OpenMovieDesktopApi = {
   getTimeline: () => ipcRenderer.invoke('openmovie:timeline-get') as Promise<Timeline>,
   assembleTimeline: () =>
     ipcRenderer.invoke('openmovie:timeline-assemble') as Promise<TimelineUpdateResult>,
+  renderTimeline: () => ipcRenderer.invoke('openmovie:timeline-render') as Promise<Task>,
+  listTimelineRenders: () =>
+    ipcRenderer.invoke('openmovie:timeline-render-list') as Promise<TimelineRenderRecord[]>,
   listTakes: (shotId) => ipcRenderer.invoke('openmovie:take-list', shotId) as Promise<TakeRecord[]>,
   selectTake: (takeId) =>
     ipcRenderer.invoke('openmovie:take-select', takeId) as Promise<TakeSelectionResult>,
@@ -243,6 +260,8 @@ const api: OpenMovieDesktopApi = {
   listProviders: () => ipcRenderer.invoke('openmovie:provider-list') as Promise<ProviderProfile[]>,
   saveProvider: (input) =>
     ipcRenderer.invoke('openmovie:provider-save', input) as Promise<ProviderProfile>,
+  testProvider: (providerId) =>
+    ipcRenderer.invoke('openmovie:provider-test', providerId) as Promise<ProviderProbe>,
 };
 
 contextBridge.exposeInMainWorld('openMovie', api);

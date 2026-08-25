@@ -263,6 +263,17 @@ describe('ProjectStore', () => {
     expect(reassembled.timeline.video_tracks[0]?.clips[0]?.id).toBe(
       assembled.timeline.video_tracks[0]?.clips[0]?.id,
     );
+    const render = project.media.recordTimelineRender({
+      sourceRevisionId: reassembled.revision.id,
+      timelineRevision: reassembled.timeline.revision,
+      object,
+      durationUs: 2_000_000,
+    });
+    expect(project.media.listTimelineRenders()[0]).toMatchObject({
+      id: render.id,
+      sourceRevisionId: reassembled.revision.id,
+      durationUs: 2_000_000,
+    });
     await project.close();
   });
 });

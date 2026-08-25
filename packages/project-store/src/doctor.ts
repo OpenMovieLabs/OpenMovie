@@ -254,7 +254,12 @@ export class ProjectDoctor {
     }
 
     const artifacts = this.database
-      .prepare('SELECT object_uri, byte_size FROM artifacts ORDER BY object_uri')
+      .prepare(
+        `SELECT object_uri, byte_size FROM artifacts
+         UNION ALL
+         SELECT object_uri, byte_size FROM timeline_renders
+         ORDER BY object_uri`,
+      )
       .all() as Array<{ object_uri: string; byte_size: number }>;
     for (const artifact of artifacts) {
       check();

@@ -25,7 +25,7 @@ import {
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 import { movieEntitySchema } from '@openmovie/movie-ir';
 import { BuiltInTakeEvaluator, EvaluationEngine } from '@openmovie/eval-engine';
-import { FfmpegFrameExtractor } from '@openmovie/media-engine';
+import { FfmpegFrameExtractor, FfmpegTimelineRenderer } from '@openmovie/media-engine';
 import type { StoredObject, TakeRecord } from '@openmovie/project-store';
 import packageMetadata from '../package.json' with { type: 'json' };
 
@@ -44,6 +44,7 @@ export class CoreServer {
   private readonly claude = new ClaudeCodeDetector();
   private readonly evaluations = new EvaluationEngine();
   private readonly frames = new FfmpegFrameExtractor();
+  private readonly timelineRenderer = new FfmpegTimelineRenderer();
 
   constructor() {
     const fake = new FakeProvider();
@@ -280,6 +281,65 @@ export class CoreServer {
         await rm(temporary, { recursive: true, force: true });
       }
     });
+    tasks.registerStep('timeline.render', async (input, context) => {
+      const project = this.requireProject();
+      if (typeof input.sourceRevisionId !== 'string') {
+        throw new Error('Source Revision ID is required');
+      }
+      if (project.revisions.currentRevisionId() !== input.sourceRevisionId) {
+        throw new Error('Timeline changed after this render task was created; create a new render');
+      }
+      const availability = await this.timelineRenderer.detect();
+      if (!availability.available) {
+        throw new Error('Timeline rendering requires FFmpeg or OPENMOVIE_FFMPEG_PATH');
+      }
+      const timeline = await project.movies.readTimeline();
+      const clips = timeline.video_tracks[0]?.clips ?? [];
+      const selected = clips.flatMap((clip) => {
+        if (!clip.take) return [];
+        const take = project.media.getTake(clip.take);
+        if (take.shotId !== clip.shot) {
+          throw new Error(`Timeline Take ${clip.take} does not belong to Shot ${clip.shot}`);
+        }
+        return [
+          {
+            path: project.objects.resolveUri(take.artifact.objectUri),
+            mimeType: take.artifact.mimeType,
+            durationUs: clip.duration_us,
+            sourceInUs: clip.source_in_us,
+          },
+        ];
+      });
+      if (selected.length !== clips.length) {
+        throw new Error('Every Timeline clip must have a selected Take before rendering');
+      }
+      const manifest = await project.readManifest();
+      const temporary = await mkdtemp(join(project.metadataRoot, 'temp', 'render-'));
+      try {
+        const outputPath = join(temporary, 'current-cut.mp4');
+        await this.timelineRenderer.render({
+          clips: selected,
+          outputPath,
+          workRoot: join(temporary, 'segments'),
+          width: manifest.delivery.width,
+          height: manifest.delivery.height,
+          frameRate: manifest.delivery.frame_rate,
+          audioSampleRate: manifest.delivery.audio_sample_rate,
+          signal: context.signal,
+          onProgress: (completed, total) =>
+            context.checkpoint({ completed, total, sourceRevisionId: input.sourceRevisionId }),
+        });
+        const object = await project.objects.importFile(outputPath);
+        return project.media.recordTimelineRender({
+          sourceRevisionId: input.sourceRevisionId,
+          timelineRevision: timeline.revision,
+          object,
+          durationUs: clips.reduce((total, clip) => total + clip.duration_us, 0),
+        });
+      } finally {
+        await rm(temporary, { recursive: true, force: true });
+      }
+    });
     return tasks;
   }
 
@@ -344,6 +404,7 @@ export class CoreServer {
               'movie.entity',
               'story.edit',
               'timeline.assemble',
+              'timeline.render',
               'object.import',
               'take.manage',
               'evaluation.read',
@@ -501,6 +562,26 @@ export class CoreServer {
           id: command.id,
           ok: true,
           result: await this.requireProject().movies.assembleTimeline(command.params),
+        };
+      case 'timeline.render_create_task': {
+        const project = this.requireProject();
+        if (project.revisions.currentRevisionId() !== command.params.sourceRevisionId) {
+          throw new Error('Source Revision is no longer current');
+        }
+        const task = this.tasks.create('Render the current Timeline cut', [
+          {
+            kind: 'timeline.render',
+            title: 'Render selected Takes into the current cut',
+            input: command.params,
+          },
+        ]);
+        return { id: command.id, ok: true, result: task };
+      }
+      case 'timeline.render_list':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.requireProject().media.listTimelineRenders(),
         };
       case 'object.import': {
         const object = await this.requireProject().objects.importFile(command.params.path);

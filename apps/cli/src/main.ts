@@ -24,6 +24,7 @@ Usage:
   openmovie doctor <project> [--deep] [--json]
   openmovie entities <project> <character|scene|shot> [--json]
   openmovie revisions <project> [--json]
+  openmovie renders <project> [--json]
   openmovie diff <project> <revision> [base-revision] [--json]
   openmovie export <project> <destination> [--deep] [--force]
 `;
@@ -75,6 +76,10 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
       }
       if (command === 'revisions') {
         print(io, project.revisions.list(100), hasFlag(argv, '--json'));
+        return 0;
+      }
+      if (command === 'renders') {
+        print(io, project.media.listTimelineRenders(), hasFlag(argv, '--json'));
         return 0;
       }
       if (command === 'diff') {
@@ -164,6 +169,7 @@ async function summary(project: ProjectStore): Promise<Record<string, unknown>> 
       scenes: (await project.movies.list('scene')).length,
       shots: (await project.movies.list('shot')).length,
       revisions: project.revisions.list(10_000).length,
+      renders: project.media.listTimelineRenders().length,
     },
   };
 }
