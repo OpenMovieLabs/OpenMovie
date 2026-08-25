@@ -357,8 +357,8 @@ OpenAI-compatible Chat/Image、OpenAI Responses（文本与图片理解）和通
 - [x] Project Backup/Repair。
 - [x] 磁盘与 Cache 管理。
 - [x] 性能基线。
-- Accessibility。
-- 国际化基础。
+- [x] Accessibility。
+- [x] 国际化基础。
 - Plugin 开发模式。
 - [x] SBOM、锁文件依赖基线和安全报告渠道。
 - 完整用户与开发文档。

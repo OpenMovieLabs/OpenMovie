@@ -38,6 +38,7 @@ import type {
   RecentProject,
   StoryDocuments,
 } from '../../preload/index.js';
+import { detectUiLocale, translate, type TranslationKey, type UiLocale } from './i18n.js';
 
 type RuntimeState =
   | { kind: 'loading' }
@@ -46,6 +47,16 @@ type RuntimeState =
 
 type ProjectSection =
   'Overview' | 'Story' | 'Characters' | 'Scenes' | 'Shots' | 'Timeline' | 'Tests';
+
+const sectionTranslation: Record<ProjectSection, TranslationKey> = {
+  Overview: 'overview',
+  Story: 'story',
+  Characters: 'characters',
+  Scenes: 'scenes',
+  Shots: 'shots',
+  Timeline: 'timeline',
+  Tests: 'tests',
+};
 
 function artifactUrl(uri: string): string | undefined {
   const match = /^om:\/\/object\/sha256\/([a-f0-9]{64})$/.exec(uri);
@@ -136,6 +147,54 @@ export function App(): React.JSX.Element {
   const [lastTask, setLastTask] = useState<Task | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uiLocale, setUiLocale] = useState<UiLocale>(() => {
+    const saved = window.localStorage.getItem('openmovie.uiLocale');
+    return saved === 'en' || saved === 'zh-CN' ? saved : detectUiLocale(navigator.language);
+  });
+  const t = (key: TranslationKey, values?: Record<string, string>): string =>
+    translate(uiLocale, key, values);
+
+  useEffect(() => {
+    document.documentElement.lang = uiLocale;
+    window.localStorage.setItem('openmovie.uiLocale', uiLocale);
+  }, [uiLocale]);
+
+  useEffect(() => {
+    if (!showCreate && !showTask && !showSettings) return;
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].at(-1);
+    const focusableSelector =
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    window.requestAnimationFrame(() =>
+      dialog?.querySelector<HTMLElement>(focusableSelector)?.focus(),
+    );
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        if (showSettings) setShowSettings(false);
+        else if (showTask) setShowTask(false);
+        else setShowCreate(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>(focusableSelector)];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [showCreate, showSettings, showTask]);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -584,7 +643,13 @@ export function App(): React.JSX.Element {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" aria-busy={busy}>
+      <a className="skip-link" href="#main-content">
+        {t('skipToContent')}
+      </a>
+      <span className="sr-only" role="status" aria-live="polite">
+        {busy ? t('busy') : ''}
+      </span>
       <header className="titlebar">
         <div className="brand">
           <Clapperboard size={20} /> OpenMovie
@@ -594,15 +659,15 @@ export function App(): React.JSX.Element {
           <span className="status-dot" />
           {runtime.kind === 'ready' ? `Core ${runtime.health.status}` : runtime.kind}
         </div>
-        <button className="icon-button" aria-label="Settings" onClick={openSettings}>
+        <button className="icon-button" aria-label={t('settings')} onClick={openSettings}>
           <Settings size={18} />
         </button>
       </header>
 
       {project ? (
-        <main className="project-workspace">
+        <main id="main-content" className="project-workspace" tabIndex={-1}>
           <aside className="project-nav">
-            <div className="nav-label">PROJECT</div>
+            <div className="nav-label">{t('project').toUpperCase()}</div>
             {(
               ['Overview', 'Story', 'Characters', 'Scenes', 'Shots', 'Timeline', 'Tests'] as const
             ).map((item) => (
@@ -611,7 +676,7 @@ export function App(): React.JSX.Element {
                 className={section === item ? 'nav-item active' : 'nav-item'}
                 onClick={() => setSection(item)}
               >
-                {item}
+                {t(sectionTranslation[item])}
                 <ChevronRight size={14} />
               </button>
             ))}
@@ -620,7 +685,7 @@ export function App(): React.JSX.Element {
             <div className="project-heading">
               <div>
                 <div className="eyebrow">
-                  <Sparkles size={14} /> MOVIE PROJECT
+                  <Sparkles size={14} /> {t('movieProject').toUpperCase()}
                 </div>
                 <input
                   className="title-input"
@@ -654,11 +719,15 @@ export function App(): React.JSX.Element {
                 </div>
               </div>
               <button className="primary" disabled={busy} onClick={openTask}>
-                <Sparkles size={17} /> Give OpenMovie a task
+                <Sparkles size={17} /> {t('giveTask')}
               </button>
             </div>
 
-            {error && <div className="error-banner">{error}</div>}
+            {error && (
+              <div className="error-banner" role="alert">
+                {error}
+              </div>
+            )}
             {section === 'Overview' ? (
               <div className="project-grid">
                 <article className="empty-stage">
@@ -1321,30 +1390,32 @@ export function App(): React.JSX.Element {
           </section>
         </main>
       ) : (
-        <main className="home">
+        <main id="main-content" className="home" tabIndex={-1}>
           <section className="hero">
             <div className="eyebrow">
-              <Sparkles size={14} /> AI-native filmmaking workspace
+              <Sparkles size={14} /> {t('homeEyebrow')}
             </div>
-            <h1>Build films like software.</h1>
-            <p>Plan, generate, test, compare, and revise every shot in one inspectable project.</p>
+            <h1>{t('homeTitle')}</h1>
+            <p>{t('homeSubtitle')}</p>
             <div className="actions">
               <button className="primary" disabled={busy} onClick={() => setShowCreate(true)}>
-                <Plus size={18} /> New movie
+                <Plus size={18} /> {t('newMovie')}
               </button>
               <button className="secondary" disabled={busy} onClick={openProject}>
-                <FolderOpen size={18} /> Open project
+                <FolderOpen size={18} /> {t('openProject')}
               </button>
             </div>
-            {error && <div className="error-banner">{error}</div>}
+            {error && (
+              <div className="error-banner" role="alert">
+                {error}
+              </div>
+            )}
           </section>
 
           <section className="workspace-card">
             <div>
-              <span className="section-label">RECENT PROJECTS</span>
-              <h2>
-                {recentProjects.length > 0 ? 'Continue a movie' : 'Your movies will appear here'}
-              </h2>
+              <span className="section-label">{t('recentProjects').toUpperCase()}</span>
+              <h2>{recentProjects.length > 0 ? t('continueMovie') : t('noMovies')}</h2>
               {recentProjects.length > 0 ? (
                 <div className="recent-list">
                   {recentProjects.slice(0, 6).map((recent) => (
@@ -1360,16 +1431,14 @@ export function App(): React.JSX.Element {
                   ))}
                 </div>
               ) : (
-                <p>
-                  Create a structured movie project, then give OpenMovie a goal in plain language.
-                </p>
+                <p>{t('noMoviesHelp')}</p>
               )}
             </div>
             <div className="health-stack">
               <div className="runtime-status" data-state={runtime.kind}>
                 <span className="status-dot" />
-                {runtime.kind === 'loading' && 'Starting OpenMovie Core…'}
-                {runtime.kind === 'error' && `Core unavailable: ${runtime.message}`}
+                {runtime.kind === 'loading' && t('startingCore')}
+                {runtime.kind === 'error' && t('coreUnavailable', { message: runtime.message })}
                 {runtime.kind === 'ready' &&
                   `Core ${runtime.health.status} · protocol ${runtime.initialize.protocolVersion}`}
               </div>
@@ -1641,7 +1710,23 @@ export function App(): React.JSX.Element {
                 />
               </label>
             </div>
-            <span className="section-label settings-subsection">APPLICATION</span>
+            <span className="section-label settings-subsection">
+              {t('application').toUpperCase()}
+            </span>
+            <div className="provider-row">
+              <div>
+                <strong>{t('language')}</strong>
+                <span>The interface language is stored only on this device.</span>
+              </div>
+              <select
+                aria-label={t('language')}
+                value={uiLocale}
+                onChange={(event) => setUiLocale(event.target.value as UiLocale)}
+              >
+                <option value="en">{t('english')}</option>
+                <option value="zh-CN">{t('chinese')}</option>
+              </select>
+            </div>
             <div className="provider-row" aria-live="polite">
               <div>
                 <strong>OpenMovie {updateState?.currentVersion ?? ''}</strong>
@@ -1691,7 +1776,7 @@ export function App(): React.JSX.Element {
             {error && <div className="error-banner">{error}</div>}
             <div className="modal-actions">
               <button className="secondary" onClick={() => setShowSettings(false)}>
-                Close
+                {t('close')}
               </button>
               <button
                 className="primary"

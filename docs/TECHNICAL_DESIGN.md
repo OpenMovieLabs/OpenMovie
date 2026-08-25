@@ -1465,6 +1465,9 @@ interface PublicError {
   本地或远程实现边界。
 - Feedback 可选绑定 `[start_us, end_us)`，Desktop 以秒输入但在 IPC 前转换为整数微秒。时间范围
   会进入 Feedback → Task 的修复目标，并随 Proposal 的 `feedbackId` 关联到最终解决 Revision。
+- Renderer 使用 typed in-repository locale catalog，不把协议枚举或 Movie IR 数据翻译后持久化。
+  语言选择仅保存在设备本地；语义控件、焦点圈、Modal Focus Trap、Live Region、Skip Link 和
+  Reduced Motion 构成桌面可访问性基线。
 - Schema 升级和备份恢复。
 
 ### 22.4 Desktop E2E
