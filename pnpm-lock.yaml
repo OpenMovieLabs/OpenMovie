@@ -160,6 +160,9 @@ importers:
       '@openmovie/movie-ir':
         specifier: workspace:*
         version: link:../movie-ir
+      '@openmovie/task-engine':
+        specifier: workspace:*
+        version: link:../task-engine
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3

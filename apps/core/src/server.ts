@@ -13,7 +13,7 @@ import {
   ProviderGateway,
 } from '@openmovie/provider-gateway';
 import { ClaudeCodeDetector, CodexAppServerAdapter } from '@openmovie/agent-gateway';
-import { TaskEngine } from '@openmovie/task-engine';
+import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
 
 const startedAt = new Date();
 const coreVersion = '0.0.0';
@@ -24,7 +24,7 @@ function failure(id: string, code: string, message: string, retryable = false): 
 
 export class CoreServer {
   private project: ProjectStore | undefined;
-  private readonly tasks = new TaskEngine();
+  private tasks: TaskEngine;
   private readonly providers = new ProviderGateway();
   private readonly codex = new CodexAppServerAdapter();
   private readonly claude = new ClaudeCodeDetector();
@@ -32,7 +32,12 @@ export class CoreServer {
   constructor() {
     const fake = new FakeProvider();
     this.providers.register(fake);
-    this.tasks.registerStep('text.generate', async (input, context) => {
+    this.tasks = this.createTaskEngine();
+  }
+
+  private createTaskEngine(persistence?: TaskPersistence): TaskEngine {
+    const tasks = persistence ? new TaskEngine(persistence) : new TaskEngine();
+    tasks.registerStep('text.generate', async (input, context) => {
       const providerId = typeof input.providerId === 'string' ? input.providerId : 'fake';
       const provider = this.providers.get(providerId);
       if (!provider.generateText) throw new Error(`Provider cannot generate text: ${providerId}`);
@@ -49,7 +54,7 @@ export class CoreServer {
         signal: context.signal,
       });
     });
-    this.tasks.registerStep('image.generate', async (input, context) => {
+    tasks.registerStep('image.generate', async (input, context) => {
       const project = this.requireProject();
       const provider = this.providers.get('fake');
       if (!provider.generateImage) throw new Error('Fake provider cannot generate images');
@@ -80,6 +85,7 @@ export class CoreServer {
       });
       return object;
     });
+    return tasks;
   }
 
   async handle(input: unknown): Promise<CoreResponse> {
@@ -109,6 +115,7 @@ export class CoreServer {
   async close(): Promise<void> {
     await this.project?.close();
     this.project = undefined;
+    this.tasks = this.createTaskEngine();
   }
 
   private async dispatch(command: CoreCommand): Promise<CoreResponse> {
@@ -138,6 +145,8 @@ export class CoreServer {
               'revision.commit',
               'object.import',
               'task.run',
+              'task.approve',
+              'task.events',
             ],
           },
         };
@@ -158,6 +167,7 @@ export class CoreServer {
           title: command.params.title,
           ...(command.params.locale ? { locale: command.params.locale } : {}),
         });
+        this.tasks = this.createTaskEngine(this.project.taskPersistence);
         return { id: command.id, ok: true, result: await this.summary() };
       }
       case 'project.open': {
@@ -165,6 +175,7 @@ export class CoreServer {
         this.project = await ProjectStore.open(command.params.path, {
           takeoverStaleLock: command.params.takeoverStaleLock,
         });
+        this.tasks = this.createTaskEngine(this.project.taskPersistence);
         return { id: command.id, ok: true, result: await this.summary() };
       }
       case 'project.close':
@@ -197,21 +208,25 @@ export class CoreServer {
       }
       case 'task.create': {
         this.requireProject();
-        const task = this.tasks.create(command.params.goal, [
-          {
-            kind: 'text.generate',
-            title: 'Plan the visual intent',
-            input: {
-              providerId: command.params.plannerProviderId,
-              model: command.params.plannerModel,
+        const task = this.tasks.create(
+          command.params.goal,
+          [
+            {
+              kind: 'text.generate',
+              title: 'Plan the visual intent',
+              input: {
+                providerId: command.params.plannerProviderId,
+                model: command.params.plannerModel,
+              },
             },
-          },
-          {
-            kind: 'image.generate',
-            title: 'Generate a visual fixture',
-            input: { prompt: command.params.goal },
-          },
-        ]);
+            {
+              kind: 'image.generate',
+              title: 'Generate a visual fixture',
+              input: { prompt: command.params.goal },
+            },
+          ],
+          { requiresApproval: command.params.requiresApproval },
+        );
         return { id: command.id, ok: true, result: task };
       }
       case 'task.run': {
@@ -222,6 +237,18 @@ export class CoreServer {
         return { id: command.id, ok: true, result: this.tasks.list() };
       case 'task.cancel':
         return { id: command.id, ok: true, result: this.tasks.cancel(command.params.taskId) };
+      case 'task.approve':
+        return {
+          id: command.id,
+          ok: true,
+          result: await this.tasks.approve(command.params.taskId),
+        };
+      case 'task.events':
+        return {
+          id: command.id,
+          ok: true,
+          result: this.tasks.listEvents(command.params.taskId, command.params.afterSequence),
+        };
       case 'provider.configure_openai_compatible':
         this.providers.upsert(
           new OpenAICompatibleProvider({

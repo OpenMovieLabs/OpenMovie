@@ -10,6 +10,7 @@ import {
   projectSummarySchema,
   revisionRecordSchema,
   taskSchema,
+  taskEventSchema,
 } from '@openmovie/contracts';
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 
@@ -189,7 +190,7 @@ void app
     });
     ipcMain.handle(
       'openmovie:task-run',
-      async (_event, goal: unknown, plannerProviderId: unknown) => {
+      async (_event, goal: unknown, plannerProviderId: unknown, requiresApproval: unknown) => {
         if (typeof goal !== 'string' || goal.trim().length === 0)
           throw new Error('Task goal is required');
         let providerId = 'fake';
@@ -214,7 +215,12 @@ void app
         const created = taskSchema.parse(
           await core?.request({
             method: 'task.create',
-            params: { goal: goal.trim(), plannerProviderId: providerId, plannerModel: model },
+            params: {
+              goal: goal.trim(),
+              plannerProviderId: providerId,
+              plannerModel: model,
+              requiresApproval: requiresApproval === true,
+            },
           }),
         );
         const task = taskSchema.parse(
@@ -229,6 +235,37 @@ void app
             .array()
             .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
         };
+      },
+    );
+    ipcMain.handle('openmovie:task-list', async () =>
+      taskSchema.array().parse(await core?.request({ method: 'task.list', params: {} })),
+    );
+    ipcMain.handle('openmovie:task-approve', async (_event, taskId: unknown) => {
+      if (typeof taskId !== 'string') throw new Error('Task ID is required');
+      const task = taskSchema.parse(
+        await core?.request({ method: 'task.approve', params: { taskId } }, 60_000),
+      );
+      return {
+        task,
+        project: projectSummarySchema.parse(
+          await core?.request({ method: 'project.get_summary', params: {} }),
+        ),
+        revisions: revisionRecordSchema
+          .array()
+          .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
+      };
+    });
+    ipcMain.handle(
+      'openmovie:task-events',
+      async (_event, taskId: unknown, afterSequence: unknown) => {
+        if (typeof taskId !== 'string') throw new Error('Task ID is required');
+        const sequence = typeof afterSequence === 'number' ? afterSequence : 0;
+        return taskEventSchema.array().parse(
+          await core?.request({
+            method: 'task.events',
+            params: { taskId, afterSequence: sequence },
+          }),
+        );
       },
     );
     ipcMain.handle('openmovie:secret-list', () => secrets?.list() ?? []);
@@ -303,6 +340,7 @@ void app
               goal: 'Generate the opening frame',
               plannerProviderId: 'fake',
               plannerModel: 'fake-text-v1',
+              requiresApproval: false,
             },
           }),
         );

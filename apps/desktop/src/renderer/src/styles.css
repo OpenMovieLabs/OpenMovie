@@ -400,6 +400,21 @@ h1 {
   color: #8f8c85;
   font-size: 12px;
 }
+.modal .checkbox-row {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  color: #b1ada4;
+}
+.modal .checkbox-row input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: #dca15c;
+}
 .modal input,
 .modal textarea,
 .modal select {

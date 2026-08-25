@@ -93,6 +93,7 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
       goal: z.string().trim().min(1).max(10_000),
       plannerProviderId: z.string().min(1).default('fake'),
       plannerModel: z.string().min(1).default('fake-text-v1'),
+      requiresApproval: z.boolean().default(false),
     }),
   }),
   z.object({
@@ -109,6 +110,19 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     id: commandIdSchema,
     method: z.literal('task.cancel'),
     params: z.object({ taskId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('task.approve'),
+    params: z.object({ taskId: z.string().min(1) }),
+  }),
+  z.object({
+    id: commandIdSchema,
+    method: z.literal('task.events'),
+    params: z.object({
+      taskId: z.string().min(1),
+      afterSequence: z.number().int().nonnegative().default(0),
+    }),
   }),
   z.object({
     id: commandIdSchema,
@@ -212,7 +226,17 @@ export const taskSchema = z.object({
   steps: z.array(taskStepSchema),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  requiresApproval: z.boolean(),
+  approvedAt: z.string().datetime().optional(),
   error: z.string().optional(),
+});
+
+export const taskEventSchema = z.object({
+  sequence: z.number().int().positive(),
+  taskId: z.string(),
+  type: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  createdAt: z.string().datetime(),
 });
 
 export const harnessHealthSchema = z.object({
@@ -249,6 +273,7 @@ export type MoviePatchOperation = z.infer<typeof moviePatchOperationSchema>;
 export type RevisionRecord = z.infer<typeof revisionRecordSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type TaskEvent = z.infer<typeof taskEventSchema>;
 export type HarnessHealth = z.infer<typeof harnessHealthSchema>;
 
 export function assertProtocolCompatible(clientVersion: string): void {

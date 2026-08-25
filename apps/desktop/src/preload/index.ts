@@ -5,6 +5,7 @@ import type {
   ProjectSummary,
   RevisionRecord,
   Task,
+  TaskEvent,
 } from '@openmovie/contracts';
 import { contextBridge, ipcRenderer } from 'electron';
 
@@ -18,7 +19,14 @@ export type OpenMovieDesktopApi = {
   renameProject: (title: string) => Promise<ProjectSummary>;
   listRevisions: () => Promise<RevisionRecord[]>;
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
-  runTask: (goal: string, plannerProviderId?: string) => Promise<TaskRunResult>;
+  runTask: (
+    goal: string,
+    plannerProviderId?: string,
+    requiresApproval?: boolean,
+  ) => Promise<TaskRunResult>;
+  listTasks: () => Promise<Task[]>;
+  approveTask: (taskId: string) => Promise<TaskRunResult>;
+  listTaskEvents: (taskId: string, afterSequence?: number) => Promise<TaskEvent[]>;
   listSecrets: () => Promise<SecretMetadata[]>;
   setSecret: (id: string, label: string, value: string) => Promise<SecretMetadata>;
   deleteSecret: (id: string) => Promise<boolean>;
@@ -71,8 +79,18 @@ const api: OpenMovieDesktopApi = {
   listRevisions: () => ipcRenderer.invoke('openmovie:revision-list') as Promise<RevisionRecord[]>,
   restoreRevision: (revisionId) =>
     ipcRenderer.invoke('openmovie:revision-restore', revisionId) as Promise<ProjectSummary>,
-  runTask: (goal, plannerProviderId) =>
-    ipcRenderer.invoke('openmovie:task-run', goal, plannerProviderId) as Promise<TaskRunResult>,
+  runTask: (goal, plannerProviderId, requiresApproval) =>
+    ipcRenderer.invoke(
+      'openmovie:task-run',
+      goal,
+      plannerProviderId,
+      requiresApproval,
+    ) as Promise<TaskRunResult>,
+  listTasks: () => ipcRenderer.invoke('openmovie:task-list') as Promise<Task[]>,
+  approveTask: (taskId) =>
+    ipcRenderer.invoke('openmovie:task-approve', taskId) as Promise<TaskRunResult>,
+  listTaskEvents: (taskId, afterSequence) =>
+    ipcRenderer.invoke('openmovie:task-events', taskId, afterSequence) as Promise<TaskEvent[]>,
   listSecrets: () => ipcRenderer.invoke('openmovie:secret-list') as Promise<SecretMetadata[]>,
   setSecret: (id, label, value) =>
     ipcRenderer.invoke('openmovie:secret-set', id, label, value) as Promise<SecretMetadata>,

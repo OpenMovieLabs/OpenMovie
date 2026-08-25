@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { TaskEngine } from '@openmovie/task-engine';
 
 import { ProjectStore, ProjectStoreError } from './index.js';
 
@@ -65,5 +66,25 @@ describe('ProjectStore', () => {
     expect(restored.parentId).toBe(changed.id);
     expect((await project.readManifest()).project.title).toBe('Original');
     await project.close();
+  });
+
+  it('persists task state and event history inside the movie project', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-tasks-'));
+    const root = join(parent, 'movie');
+    const project = await ProjectStore.create(root, { title: 'Persistent Tasks' });
+    const engine = new TaskEngine(project.taskPersistence);
+    engine.registerStep('plan', () => Promise.resolve({ scenes: 3 }));
+    const task = engine.create('Plan three scenes', [
+      { kind: 'plan', title: 'Plan', input: { count: 3 } },
+    ]);
+    expect((await engine.run(task.id)).status).toBe('succeeded');
+    const eventCount = engine.listEvents(task.id).length;
+    await project.close();
+
+    const reopened = await ProjectStore.open(root);
+    const restoredEngine = new TaskEngine(reopened.taskPersistence);
+    expect(restoredEngine.get(task.id).steps[0]?.output).toEqual({ scenes: 3 });
+    expect(restoredEngine.listEvents(task.id)).toHaveLength(eventCount);
+    await reopened.close();
   });
 });

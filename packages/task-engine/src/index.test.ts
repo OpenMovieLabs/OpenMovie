@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { TaskEngine } from './index.js';
+import { MemoryTaskPersistence, TaskEngine, type Task } from './index.js';
 
 describe('TaskEngine', () => {
   it('runs typed steps and emits ordered events', async () => {
@@ -30,5 +30,48 @@ describe('TaskEngine', () => {
     const retried = await engine.run(task.id);
     expect(retried.status).toBe('succeeded');
     expect(retried.steps[0]?.attempt).toBe(2);
+  });
+
+  it('pauses at an approval gate and resumes after approval', async () => {
+    const engine = new TaskEngine();
+    engine.registerStep('render', () => Promise.resolve('approved output'));
+    const task = engine.create(
+      'Render reviewed shot',
+      [{ kind: 'render', title: 'Render', input: {} }],
+      { requiresApproval: true },
+    );
+
+    expect((await engine.run(task.id)).status).toBe('awaiting_approval');
+    const approved = await engine.approve(task.id);
+    expect(approved.status).toBe('succeeded');
+    expect(approved.approvedAt).toBeDefined();
+  });
+
+  it('recovers interrupted persisted tasks as retryable failures', () => {
+    const persistence = new MemoryTaskPersistence();
+    const now = new Date().toISOString();
+    persistence.saveTask({
+      id: 'task_interrupted',
+      goal: 'Interrupted render',
+      status: 'running',
+      steps: [
+        {
+          id: 'step_interrupted',
+          kind: 'render',
+          title: 'Render',
+          input: {},
+          status: 'running',
+          attempt: 1,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+      requiresApproval: false,
+    } satisfies Task);
+
+    const recovered = new TaskEngine(persistence).get('task_interrupted');
+    expect(recovered.status).toBe('failed');
+    expect(recovered.steps[0]?.status).toBe('failed');
+    expect(persistence.listEvents('task_interrupted')[0]?.type).toBe('task.recovered');
   });
 });

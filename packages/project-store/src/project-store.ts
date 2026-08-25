@@ -18,6 +18,7 @@ import { writeFileAtomic } from './fs.js';
 import { ProjectLock } from './lock.js';
 import { ObjectStore } from './object-store.js';
 import { RevisionEngine } from './revision.js';
+import { SqliteTaskPersistence } from './task-persistence.js';
 
 function digest(content: string): string {
   return createHash('sha256').update(content).digest('hex');
@@ -37,6 +38,7 @@ export class ProjectStore {
   readonly metadataRoot: string;
   readonly objects: ObjectStore;
   readonly revisions: RevisionEngine;
+  readonly taskPersistence: SqliteTaskPersistence;
 
   private closed = false;
 
@@ -50,6 +52,7 @@ export class ProjectStore {
     this.metadataRoot = join(root, '.openmovie');
     this.objects = new ObjectStore(this.metadataRoot);
     this.revisions = new RevisionEngine(root, manifest.project.id, database);
+    this.taskPersistence = new SqliteTaskPersistence(database);
   }
 
   static async create(rootInput: string, options: CreateProjectOptions): Promise<ProjectStore> {

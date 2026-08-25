@@ -44,6 +44,7 @@ export function App(): React.JSX.Element {
     apiKey: '',
   });
   const [plannerProviderId, setPlannerProviderId] = useState('fake');
+  const [requiresApproval, setRequiresApproval] = useState(false);
   const [title, setTitle] = useState('Untitled Movie');
   const [goal, setGoal] = useState('Create a cinematic establishing frame for the opening scene');
   const [lastTask, setLastTask] = useState<Task | null>(null);
@@ -87,6 +88,8 @@ export function App(): React.JSX.Element {
     setProject(summary);
     setTitle(summary.title);
     setRevisions(await window.openMovie.listRevisions());
+    const tasks = await window.openMovie.listTasks();
+    setLastTask(tasks.at(-1) ?? null);
   };
 
   const createProject = (): void => {
@@ -116,11 +119,21 @@ export function App(): React.JSX.Element {
 
   const runTask = (): void => {
     void run(async () => {
-      const result = await window.openMovie.runTask(goal, plannerProviderId);
+      const result = await window.openMovie.runTask(goal, plannerProviderId, requiresApproval);
       setLastTask(result.task);
       setProject(result.project);
       setRevisions(result.revisions);
       setShowTask(false);
+    });
+  };
+
+  const approveTask = (): void => {
+    if (!lastTask) return;
+    void run(async () => {
+      const result = await window.openMovie.approveTask(lastTask.id);
+      setLastTask(result.task);
+      setProject(result.project);
+      setRevisions(result.revisions);
     });
   };
 
@@ -214,6 +227,11 @@ export function App(): React.JSX.Element {
                 <button className="secondary">
                   <Plus size={17} /> Add a scene
                 </button>
+                {lastTask?.status === 'awaiting_approval' && (
+                  <button className="primary" disabled={busy} onClick={approveTask}>
+                    Approve and continue
+                  </button>
+                )}
               </article>
               <article className="history-panel">
                 <div className="panel-title">
@@ -356,6 +374,14 @@ export function App(): React.JSX.Element {
                     </option>
                   ))}
               </select>
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={requiresApproval}
+                onChange={(event) => setRequiresApproval(event.target.checked)}
+              />
+              Pause for approval before generation
             </label>
             <p>
               The planning model produces visual intent; the deterministic image fixture keeps this
