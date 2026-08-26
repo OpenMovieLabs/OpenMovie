@@ -108,7 +108,7 @@ interface CoreCommand<T = unknown> {
   `provider.usage_summary`。
 - Harness：Codex App Server 与可用性探测。
 
-`task.create` 将规划与媒体执行明确分离：`plannerProviderId/plannerModel` 负责理解目标，`mediaProviderId/mediaModel/mediaKind` 负责产物生成。长任务创建后立即返回；状态通过持久化 Task 查询和 Event sequence 观察。异步 Provider Job ID 在 Step checkpoint 中持久化，重试时优先恢复远程 Job。
+`task.create` 将对话与媒体工具明确分离。`mediaKind: none`（默认）只运行文本回复和可选的 Movie IR Proposal，不执行媒体生成；`image` 或 `video` 只运行相应媒体工具。未提供 `targetShotId` 的媒体任务在生成成功后自动创建可版本化的归档 Shot，再把产物登记为 Take，禁止留下 UI 不可见的孤立对象。长任务创建后立即返回；状态通过持久化 Task 查询和 Event sequence 观察。异步 Provider Job ID 在 Step checkpoint 中持久化，重试时优先恢复远程 Job。
 
 ## 6. Core Response
 

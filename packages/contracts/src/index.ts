@@ -324,7 +324,7 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
       plannerModel: z.string().min(1).default('fake-text-v1'),
       requiresApproval: z.boolean().default(false),
       targetShotId: z.string().min(1).optional(),
-      mediaKind: z.enum(['image', 'video']).default('image'),
+      mediaKind: z.enum(['none', 'image', 'video']).default('none'),
       mediaProviderId: z.string().min(1).default('fake'),
       mediaModel: z.string().min(1),
       feedbackId: z.string().min(1).optional(),

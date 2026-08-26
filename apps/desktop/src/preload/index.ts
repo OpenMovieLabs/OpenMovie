@@ -93,7 +93,7 @@ export type OpenMovieDesktopApi = {
     plannerProviderId?: string,
     requiresApproval?: boolean,
     targetShotId?: string,
-    mediaKind?: 'image' | 'video',
+    mediaKind?: 'none' | 'image' | 'video',
     mediaProviderId?: string,
     feedbackId?: string,
   ) => Promise<TaskRunResult>;

@@ -616,16 +616,22 @@ void app
           providerId = profile.id;
           model = profile.model;
         }
+        const selectedMediaKind =
+          mediaKind === 'video' ? 'video' : mediaKind === 'image' ? 'image' : 'none';
         let selectedMediaProviderId = 'fake';
-        let selectedMediaModel = mediaKind === 'video' ? 'fake-video-v1' : 'fake-image-v1';
-        if (typeof mediaProviderId === 'string' && mediaProviderId !== 'fake') {
+        let selectedMediaModel = selectedMediaKind === 'video' ? 'fake-video-v1' : 'fake-image-v1';
+        if (
+          selectedMediaKind !== 'none' &&
+          typeof mediaProviderId === 'string' &&
+          mediaProviderId !== 'fake'
+        ) {
           if (!secrets) throw new Error('Secret Store is unavailable');
           const profile = secrets
             .listProviderProfiles()
             .find((item) => item.id === mediaProviderId);
           if (!profile) throw new Error(`Media Provider profile not found: ${mediaProviderId}`);
           const apiKey = await secrets.get(profile.secretId);
-          if (mediaKind === 'video') {
+          if (selectedMediaKind === 'video') {
             if (profile.protocol !== 'http_video_jobs') {
               throw new Error('Selected Provider does not support asynchronous video jobs');
             }
@@ -660,7 +666,7 @@ void app
               plannerProviderId: providerId,
               plannerModel: model,
               requiresApproval: requiresApproval === true,
-              mediaKind: mediaKind === 'video' ? 'video' : 'image',
+              mediaKind: selectedMediaKind,
               mediaProviderId: selectedMediaProviderId,
               mediaModel: selectedMediaModel,
               ...(typeof targetShotId === 'string' && targetShotId ? { targetShotId } : {}),

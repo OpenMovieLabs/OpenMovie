@@ -46,6 +46,68 @@ describe('CoreServer', () => {
     expect(response).toMatchObject({ ok: false, error: { code: 'INVALID_COMMAND' } });
   });
 
+  it('separates conversation turns from media tools and persists untargeted media as a Take', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-core-conversation-'));
+    const server = new CoreServer();
+    try {
+      await sendCore(server, 'project.create', {
+        path: join(parent, 'movie'),
+        title: 'Conversation Movie',
+      });
+
+      const conversation = taskSchema.parse(
+        await sendCore(server, 'task.create', {
+          goal: 'Tell me what this workspace can do',
+          plannerProviderId: 'fake',
+          plannerModel: 'fake-text-v1',
+          requiresApproval: false,
+          mediaKind: 'none',
+          mediaProviderId: 'fake',
+          mediaModel: 'fake-image-v1',
+        }),
+      );
+      expect(conversation.steps.map((step) => step.kind)).toEqual([
+        'text.generate',
+        'proposal.create_from_plan',
+      ]);
+      const answered = taskSchema.parse(
+        await sendCore(server, 'task.run', { taskId: conversation.id }),
+      );
+      expect(answered.status).toBe('succeeded');
+      expect(answered.steps[1]?.output).toMatchObject({
+        proposal: null,
+        summary: 'Fake response: Tell me what this workspace can do',
+      });
+      expect(await sendCore(server, 'movie.entity_list', { kind: 'shot' })).toEqual([]);
+
+      const image = taskSchema.parse(
+        await sendCore(server, 'task.create', {
+          goal: 'A lighthouse in a midnight storm',
+          plannerProviderId: 'fake',
+          plannerModel: 'fake-text-v1',
+          requiresApproval: false,
+          mediaKind: 'image',
+          mediaProviderId: 'fake',
+          mediaModel: 'fake-image-v1',
+        }),
+      );
+      expect(image.steps.map((step) => step.kind)).toEqual(['image.generate']);
+      const generated = taskSchema.parse(await sendCore(server, 'task.run', { taskId: image.id }));
+      expect(generated.status).toBe('succeeded');
+      const shots = (await sendCore(server, 'movie.entity_list', { kind: 'shot' })) as Array<{
+        id: string;
+      }>;
+      expect(shots).toHaveLength(1);
+      expect(
+        takeRecordSchema
+          .array()
+          .parse(await sendCore(server, 'take.list', { shotId: shots[0]?.id })),
+      ).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
   it('loads an explicitly enabled development Plugin as a planning Provider', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'openmovie-core-plugin-'));
     const entry = join(parent, 'plugin.mjs');
@@ -115,7 +177,7 @@ describe('CoreServer', () => {
             plannerModel: 'fixture-model',
             requiresApproval: false,
             targetShotId: shot.entity.id,
-            mediaKind: 'image',
+            mediaKind: 'none',
             mediaProviderId: 'fake',
             mediaModel: 'fake-image-v1',
           }),
@@ -178,7 +240,7 @@ describe('CoreServer', () => {
           plannerProviderId: 'remote_fixture',
           plannerModel: 'fixture-model',
           requiresApproval: false,
-          mediaKind: 'image',
+          mediaKind: 'none',
           mediaProviderId: 'fake',
           mediaModel: 'fake-image-v1',
         }),
@@ -446,7 +508,7 @@ describe('CoreServer', () => {
           .status,
       ).toBe('succeeded');
       expect(await sendCore(server, 'timeline.render_list')).toEqual([]);
-      expect(await sendCore(server, 'provider.usage_summary')).toMatchObject({ runCount: 5 });
+      expect(await sendCore(server, 'provider.usage_summary')).toMatchObject({ runCount: 3 });
 
       await sendCore(server, 'project.close');
       expect(

@@ -50,6 +50,7 @@ import type {
 } from '../../preload/index.js';
 import { detectUiLocale, type UiLocale } from './i18n.js';
 import { ensureActiveProject, reconcileRecentProjects } from './project-list.js';
+import { taskResponseText, visibleExecutionSteps } from './task-presentation.js';
 
 type RuntimeState =
   { kind: 'loading' } | { kind: 'ready'; health: CoreHealth } | { kind: 'error'; message: string };
@@ -86,6 +87,11 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[index]}`;
 }
 
+function takeLabel(take: TakeRecord): string {
+  const prompt = take.generation.prompt;
+  return typeof prompt === 'string' && prompt.trim() ? prompt.trim() : take.shotId;
+}
+
 function taskStatusText(status: Task['status'], locale: UiLocale): string {
   const labels: Record<Task['status'], [string, string]> = {
     queued: ['已排队', 'Queued'],
@@ -108,6 +114,7 @@ function taskStepText(title: string, locale: UiLocale): string {
     ],
     'Generate an image Take': ['生成图片 Take', 'Generate an image Take'],
     'Generate a video Take': ['生成视频 Take', 'Generate a video Take'],
+    'Prepare a resource target': ['准备资源归档位置', 'Prepare a resource target'],
     'Render selected Takes into the current cut': [
       '将已选 Take 渲染为当前成片',
       'Render selected Takes into the current cut',
@@ -180,7 +187,7 @@ export function App(): React.JSX.Element {
   const [composer, setComposer] = useState('');
   const [plannerProviderId, setPlannerProviderId] = useState('fake');
   const [mediaProviderId, setMediaProviderId] = useState('fake');
-  const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
+  const [mediaKind, setMediaKind] = useState<'none' | 'image' | 'video'>('none');
   const [showComposerSettings, setShowComposerSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -229,16 +236,19 @@ export function App(): React.JSX.Element {
   );
 
   const mediaProviders = useMemo(
-    () => [
-      { id: 'fake', label: text('内置演示生成器', 'Built-in demo generator') },
-      ...providers
-        .filter((item) =>
-          mediaKind === 'video'
-            ? item.protocol === 'http_video_jobs'
-            : item.protocol === 'openai_images',
-        )
-        .map((item) => ({ id: item.id, label: item.label })),
-    ],
+    () =>
+      mediaKind === 'none'
+        ? []
+        : [
+            { id: 'fake', label: text('内置演示生成器', 'Built-in demo generator') },
+            ...providers
+              .filter((item) =>
+                mediaKind === 'video'
+                  ? item.protocol === 'http_video_jobs'
+                  : item.protocol === 'openai_images',
+              )
+              .map((item) => ({ id: item.id, label: item.label })),
+          ],
     [mediaKind, providers, uiLocale],
   );
 
@@ -409,14 +419,16 @@ export function App(): React.JSX.Element {
   const submitPrompt = (): void => {
     const goal = composer.trim();
     if (!project || !goal || busy) return;
+    const requestedMediaKind = mediaKind;
     setComposer('');
+    if (requestedMediaKind !== 'none') setMediaKind('none');
     void run(async () => {
       const result = await window.openMovie.runTask(
         goal,
         plannerProviderId,
         false,
         selectedShotId,
-        mediaKind,
+        requestedMediaKind,
         mediaProviderId,
       );
       setTasks((current) => [...current, result.task]);
@@ -521,7 +533,7 @@ export function App(): React.JSX.Element {
       .includes(query),
   );
   const filteredTakes = takes.filter((take) =>
-    `${take.id} ${take.shotId}`.toLowerCase().includes(query),
+    `${take.id} ${take.shotId} ${takeLabel(take)}`.toLowerCase().includes(query),
   );
   const hasActiveTasks = tasks.some((task) => activeTaskStatuses.has(task.status));
   const hasProjectResources = shots.length > 0 || takes.length > 0 || renders.length > 0;
@@ -787,93 +799,97 @@ export function App(): React.JSX.Element {
             <div className="message-list">
               {[...tasks]
                 .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-                .map((task) => (
-                  <div className="task-conversation" key={task.id}>
-                    <article className="message user-message">
-                      <div>
-                        <p>{task.goal}</p>
-                      </div>
-                    </article>
-                    <article className="message assistant-message">
-                      <div className="message-avatar assistant">
-                        <Aperture size={15} />
-                      </div>
-                      <div className="assistant-content">
-                        <div className="assistant-heading">
-                          <span>OpenMovie</span>
-                          <div className={`task-status ${task.status}`}>
-                            {activeTaskStatuses.has(task.status) && <LoaderCircle size={12} />}
-                            {task.status === 'succeeded' && <Check size={12} />}
-                            {task.status === 'failed' && <CircleAlert size={12} />}
-                            {task.status === 'cancelled' && <X size={12} />}
-                            {taskStatusText(task.status, uiLocale)}
-                          </div>
+                .map((task) => {
+                  const executionSteps = visibleExecutionSteps(task);
+                  const responseText = taskResponseText(task, uiLocale);
+                  return (
+                    <div className="task-conversation" key={task.id}>
+                      <article className="message user-message">
+                        <div>
+                          <p>{task.goal}</p>
                         </div>
-                        {task.status === 'failed' ? (
-                          <div className="task-error">
-                            <strong>{taskErrorSummary(task.error, uiLocale)}</strong>
-                            {task.error && (
-                              <details>
-                                <summary>{text('技术详情', 'Technical details')}</summary>
-                                <code>{task.error}</code>
-                              </details>
-                            )}
+                      </article>
+                      <article className="message assistant-message">
+                        <div className="message-avatar assistant">
+                          <Aperture size={15} />
+                        </div>
+                        <div className="assistant-content">
+                          <div className="assistant-heading">
+                            <span>OpenMovie</span>
+                            <div className={`task-status ${task.status}`}>
+                              {activeTaskStatuses.has(task.status) && <LoaderCircle size={12} />}
+                              {task.status === 'succeeded' && <Check size={12} />}
+                              {task.status === 'failed' && <CircleAlert size={12} />}
+                              {task.status === 'cancelled' && <X size={12} />}
+                              {taskStatusText(task.status, uiLocale)}
+                            </div>
                           </div>
-                        ) : (
-                          <p>
-                            {task.status === 'succeeded'
-                              ? text(
-                                  '任务已完成。新的工程变更或媒体资源已经出现在右侧。',
-                                  'The task is complete. New project changes or media are available on the right.',
-                                )
-                              : task.status === 'awaiting_approval'
+                          {task.status === 'failed' ? (
+                            <div className="task-error">
+                              <strong>{taskErrorSummary(task.error, uiLocale)}</strong>
+                              {task.error && (
+                                <details>
+                                  <summary>{text('技术详情', 'Technical details')}</summary>
+                                  <code>{task.error}</code>
+                                </details>
+                              )}
+                            </div>
+                          ) : task.status === 'succeeded' ? (
+                            <p>{responseText}</p>
+                          ) : (
+                            <p>
+                              {task.status === 'awaiting_approval'
                                 ? text(
                                     '这个任务将调用远程服务，需要你确认后才能继续。',
                                     'This task will contact a remote service and needs your approval.',
                                   )
-                                : text(
-                                    '正在分析工程并执行任务，你可以继续浏览右侧资源。',
-                                    'I am inspecting the project and working through the task.',
-                                  )}
-                          </p>
-                        )}
-                        <div className="task-steps">
-                          {task.steps.map((step) => (
-                            <div key={step.id} className={`task-step ${step.status}`}>
-                              <span className="step-indicator" aria-hidden="true">
-                                {step.status === 'running' && <LoaderCircle size={10} />}
-                                {step.status === 'succeeded' && <Check size={11} />}
-                                {step.status === 'failed' && <CircleAlert size={10} />}
-                                {step.status === 'cancelled' && <X size={10} />}
-                              </span>
-                              <span>{taskStepText(step.title, uiLocale)}</span>
-                            </div>
-                          ))}
+                                : executionSteps.length === 0
+                                  ? text('正在思考…', 'Thinking…')
+                                  : text('正在执行生成任务…', 'Running the generation task…')}
+                            </p>
+                          )}
+                          {(activeTaskStatuses.has(task.status) ||
+                            task.status === 'awaiting_approval') &&
+                            executionSteps.length > 0 && (
+                              <div className="task-steps">
+                                {executionSteps.map((step) => (
+                                  <div key={step.id} className={`task-step ${step.status}`}>
+                                    <span className="step-indicator" aria-hidden="true">
+                                      {step.status === 'running' && <LoaderCircle size={10} />}
+                                      {step.status === 'succeeded' && <Check size={11} />}
+                                      {step.status === 'failed' && <CircleAlert size={10} />}
+                                      {step.status === 'cancelled' && <X size={10} />}
+                                    </span>
+                                    <span>{taskStepText(step.title, uiLocale)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          <div className="message-actions">
+                            {task.status === 'awaiting_approval' && (
+                              <button
+                                className="primary-button compact"
+                                onClick={() => approveTask(task.id)}
+                              >
+                                <Check size={14} /> {text('批准并继续', 'Approve and continue')}
+                              </button>
+                            )}
+                            {activeTaskStatuses.has(task.status) && (
+                              <button className="text-button" onClick={() => cancelTask(task.id)}>
+                                <Square size={12} /> {text('停止', 'Stop')}
+                              </button>
+                            )}
+                            {task.status === 'failed' && (
+                              <button className="text-button" onClick={() => editPrompt(task.goal)}>
+                                <RotateCcw size={12} /> {text('修改后重试', 'Edit and retry')}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="message-actions">
-                          {task.status === 'awaiting_approval' && (
-                            <button
-                              className="primary-button compact"
-                              onClick={() => approveTask(task.id)}
-                            >
-                              <Check size={14} /> {text('批准并继续', 'Approve and continue')}
-                            </button>
-                          )}
-                          {activeTaskStatuses.has(task.status) && (
-                            <button className="text-button" onClick={() => cancelTask(task.id)}>
-                              <Square size={12} /> {text('停止', 'Stop')}
-                            </button>
-                          )}
-                          {task.status === 'failed' && (
-                            <button className="text-button" onClick={() => editPrompt(task.goal)}>
-                              <RotateCcw size={12} /> {text('修改后重试', 'Edit and retry')}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-                ))}
+                      </article>
+                    </div>
+                  );
+                })}
               {proposals
                 .filter((proposal) => proposal.status === 'pending')
                 .map((proposal) => (
@@ -974,30 +990,41 @@ export function App(): React.JSX.Element {
                 {showComposerSettings && (
                   <div className="composer-advanced-options">
                     <label>
-                      {mediaKind === 'image' ? <ImageIcon size={13} /> : <Video size={13} />}
+                      {mediaKind === 'none' ? (
+                        <MessageSquare size={13} />
+                      ) : mediaKind === 'image' ? (
+                        <ImageIcon size={13} />
+                      ) : (
+                        <Video size={13} />
+                      )}
                       <select
                         value={mediaKind}
-                        onChange={(event) => setMediaKind(event.target.value as 'image' | 'video')}
+                        onChange={(event) =>
+                          setMediaKind(event.target.value as 'none' | 'image' | 'video')
+                        }
                         disabled={!project}
                       >
+                        <option value="none">{text('仅对话', 'Conversation')}</option>
                         <option value="image">{text('图片', 'Image')}</option>
                         <option value="video">{text('视频', 'Video')}</option>
                       </select>
                     </label>
-                    <label>
-                      <Sparkles size={13} />
-                      <select
-                        value={mediaProviderId}
-                        onChange={(event) => setMediaProviderId(event.target.value)}
-                        disabled={!project}
-                      >
-                        {mediaProviders.map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {mediaKind !== 'none' && (
+                      <label>
+                        <Sparkles size={13} />
+                        <select
+                          value={mediaProviderId}
+                          onChange={(event) => setMediaProviderId(event.target.value)}
+                          disabled={!project}
+                        >
+                          {mediaProviders.map((provider) => (
+                            <option key={provider.id} value={provider.id}>
+                              {provider.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
                 )}
                 {selectedShotId && (
@@ -1157,8 +1184,8 @@ export function App(): React.JSX.Element {
                 <strong>{text('从对话开始创作', 'Start creating in chat')}</strong>
                 <p>
                   {text(
-                    '描述故事、画面或一个镜头。OpenMovie 会先给出可审查的工程修改，再生成媒体资源。',
-                    'Describe a story, image, or shot. OpenMovie will propose reviewable project changes before generating media.',
+                    '直接对话来规划或修改电影；需要图片或视频时，在输入框下方选择对应任务。',
+                    'Chat to plan or change the movie. Choose an image or video task below the composer when you need media.',
                   )}
                 </p>
                 <button
@@ -1200,7 +1227,7 @@ export function App(): React.JSX.Element {
                             <Film size={21} />
                           )}
                         </div>
-                        <span>{take.shotId}</span>
+                        <span title={takeLabel(take)}>{takeLabel(take)}</span>
                         <small>{formatBytes(take.artifact.byteSize)}</small>
                       </button>
                     );
@@ -1535,7 +1562,7 @@ function ResourceInspector({
         <div className="inspector-title">
           <div>
             <span className="section-kicker">TAKE</span>
-            <h3>{take.shotId}</h3>
+            <h3>{takeLabel(take)}</h3>
           </div>
           <span>{formatBytes(take.artifact.byteSize)}</span>
         </div>

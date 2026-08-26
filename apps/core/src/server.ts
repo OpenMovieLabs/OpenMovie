@@ -46,7 +46,7 @@ import packageMetadata from '../package.json' with { type: 'json' };
 const startedAt = new Date();
 const coreVersion = packageMetadata.version;
 const openMoviePlanPrompt =
-  'OPENMOVIE_PLAN_V1. Return only one JSON object with summary and actions. Allowed actions: story.update; scene.create; shot.create (scene_id may be @last_scene); shot.update. Use snake_case fields. Use actions: [] when no Movie IR change is needed. Never include markdown fences and never modify project files directly.';
+  'OPENMOVIE_PLAN_V1. Return only one JSON object with summary and actions. The summary is the natural-language answer shown directly to the user: make it useful and conversational even when actions is empty. Allowed actions: story.update; scene.create; shot.create (scene_id may be @last_scene); shot.update. Use snake_case fields. Use actions: [] when no Movie IR change is needed. Never include markdown fences and never modify project files directly.';
 
 function failure(id: string, code: string, message: string, retryable = false): CoreResponse {
   return { id, ok: false, error: { code, message, retryable } };
@@ -191,43 +191,24 @@ export class CoreServer {
         requestHash: generated.requestHash,
         ...(generated.usage ? { usage: generated.usage } : {}),
       });
-      if (typeof input.shotId === 'string') {
-        const take = await project.media.createTake({
-          shotId: input.shotId,
-          object,
-          runId: context.task.id,
-          provider: { providerId, model: generated.model },
-          generation: {
-            requestHash: generated.requestHash,
-            prompt: context.task.goal,
-            width,
-            height,
-          },
-        });
-        return {
-          object,
-          take,
-          evaluation: await this.evaluateTake(project, input.shotId, take, object),
-        };
-      }
-      await project.revisions.commit({
-        expectedRevisionId: project.revisions.currentRevisionId(),
-        authorType: 'agent',
-        authorId: 'direct_agent',
-        message: 'Generate image fixture',
-        patch: [
-          {
-            op: 'add',
-            path: '/extensions/last_generated_object',
-            value: {
-              uri: object.uri,
-              mime_type: object.mimeType,
-              request_hash: generated.requestHash,
-            },
-          },
-        ],
+      const shotId = await ensureMediaShot(project, input, context.task.goal, 4);
+      const take = await project.media.createTake({
+        shotId,
+        object,
+        runId: context.task.id,
+        provider: { providerId, model: generated.model },
+        generation: {
+          requestHash: generated.requestHash,
+          prompt: context.task.goal,
+          width,
+          height,
+        },
       });
-      return object;
+      return {
+        object,
+        take,
+        evaluation: await this.evaluateTake(project, shotId, take, object),
+      };
     });
     tasks.registerStep('video.generate', async (input, context) => {
       const project = this.requireProject();
@@ -288,9 +269,9 @@ export class CoreServer {
         ...(generated.usage ? { usage: generated.usage } : {}),
       });
       const object = await project.objects.importBytes(generated.bytes, 'generated.mp4');
-      if (typeof input.shotId !== 'string') return { object, job };
+      const shotId = await ensureMediaShot(project, input, context.task.goal, durationSeconds);
       const take = await project.media.createTake({
-        shotId: input.shotId,
+        shotId,
         object,
         runId: context.task.id,
         provider: { providerId, model: generated.model, jobId: job.id },
@@ -304,7 +285,7 @@ export class CoreServer {
         object,
         job,
         take,
-        evaluation: await this.evaluateTake(project, input.shotId, take, object),
+        evaluation: await this.evaluateTake(project, shotId, take, object),
       };
     });
     tasks.registerStep('media.analyze', async (input, context) => {
@@ -927,51 +908,54 @@ export class CoreServer {
           if (target.type !== 'shot') throw new Error('Task target must be a shot');
           durationSeconds = target.duration_us / 1_000_000;
         }
-        const policyRequiresApproval = await this.requiresRemoteApproval(project, [
-          command.params.plannerProviderId,
-          command.params.mediaProviderId,
-        ]);
-        const task = this.tasks.create(
-          command.params.goal,
-          [
-            {
-              kind: 'text.generate',
-              title: 'Plan the visual intent',
-              input: {
-                providerId: command.params.plannerProviderId,
-                model: command.params.plannerModel,
-                ...(command.params.targetShotId
-                  ? { targetShotId: command.params.targetShotId }
-                  : {}),
-              },
-            },
-            {
-              kind: 'proposal.create_from_plan',
-              title: 'Prepare reviewable Movie IR actions',
-              input: {
-                baseRevisionId,
-                ...(command.params.feedbackId ? { feedbackId: command.params.feedbackId } : {}),
-              },
-            },
-            {
-              kind: command.params.mediaKind === 'video' ? 'video.generate' : 'image.generate',
-              title:
-                command.params.mediaKind === 'video'
-                  ? 'Generate a video Take'
-                  : 'Generate an image Take',
-              input: {
-                prompt: command.params.goal,
-                providerId: command.params.mediaProviderId,
-                model: command.params.mediaModel,
-                durationSeconds,
-                width: 1024,
-                height: 1024,
-                ...(command.params.targetShotId ? { shotId: command.params.targetShotId } : {}),
-              },
-            },
-          ],
-          { requiresApproval: command.params.requiresApproval || policyRequiresApproval },
+        const isConversation = command.params.mediaKind === 'none';
+        const policyRequiresApproval = await this.requiresRemoteApproval(
+          project,
+          isConversation ? [command.params.plannerProviderId] : [command.params.mediaProviderId],
         );
+        const steps = isConversation
+          ? [
+              {
+                kind: 'text.generate',
+                title: 'Reply to the user',
+                input: {
+                  providerId: command.params.plannerProviderId,
+                  model: command.params.plannerModel,
+                  ...(command.params.targetShotId
+                    ? { targetShotId: command.params.targetShotId }
+                    : {}),
+                },
+              },
+              {
+                kind: 'proposal.create_from_plan',
+                title: 'Prepare reviewable Movie IR actions',
+                input: {
+                  baseRevisionId,
+                  ...(command.params.feedbackId ? { feedbackId: command.params.feedbackId } : {}),
+                },
+              },
+            ]
+          : [
+              {
+                kind: command.params.mediaKind === 'video' ? 'video.generate' : 'image.generate',
+                title:
+                  command.params.mediaKind === 'video'
+                    ? 'Generate a video Take'
+                    : 'Generate an image Take',
+                input: {
+                  prompt: command.params.goal,
+                  providerId: command.params.mediaProviderId,
+                  model: command.params.mediaModel,
+                  durationSeconds,
+                  width: 1024,
+                  height: 1024,
+                  ...(command.params.targetShotId ? { shotId: command.params.targetShotId } : {}),
+                },
+              },
+            ];
+        const task = this.tasks.create(command.params.goal, steps, {
+          requiresApproval: command.params.requiresApproval || policyRequiresApproval,
+        });
         return { id: command.id, ok: true, result: task };
       }
       case 'task.run': {
@@ -1339,6 +1323,39 @@ function stableRequestHash(value: unknown): string {
       ),
     )
     .digest('hex');
+}
+
+async function ensureMediaShot(
+  project: ProjectStore,
+  input: Record<string, unknown>,
+  goal: string,
+  durationSeconds: number,
+): Promise<string> {
+  if (typeof input.shotId === 'string') return input.shotId;
+  const manifest = await project.readManifest();
+  const isChinese =
+    manifest.project.default_locale.toLowerCase().startsWith('zh') || /[\u3400-\u9fff]/.test(goal);
+  const scenes = (await project.movies.list('scene')).filter((entity) => entity.type === 'scene');
+  let sceneId = scenes.sort((left, right) => left.order - right.order).at(-1)?.id;
+  if (!sceneId) {
+    const scene = await project.movies.createScene({
+      title: isChinese ? '对话生成素材' : 'Generated media',
+      storyGoal: isChinese
+        ? '从 OpenMovie 对话生成的媒体素材'
+        : 'Media generated from the OpenMovie conversation',
+      expectedRevisionId: project.revisions.currentRevisionId(),
+      authorId: 'direct_agent',
+    });
+    sceneId = scene.entity.id;
+  }
+  const shot = await project.movies.createShot({
+    sceneId,
+    durationUs: Math.round(durationSeconds * 1_000_000),
+    framing: isChinese ? '由对话生成' : 'Generated from conversation',
+    expectedRevisionId: project.revisions.currentRevisionId(),
+    authorId: 'direct_agent',
+  });
+  return shot.entity.id;
 }
 
 function parseAgentPlanText(text: string): AgentPlan | null {
