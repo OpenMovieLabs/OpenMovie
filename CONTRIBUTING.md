@@ -11,7 +11,7 @@ architecture and operating guides are indexed in [docs/README.md](./docs/README.
 3. Discuss changes to project format, protocols, security boundaries, or process architecture before implementation.
 4. Keep pull requests focused on one reviewable outcome.
 
-Contributions are licensed under the repository's [0BSD license](./LICENSE). By submitting a contribution, you agree that it may be distributed under that license and that you have the right to submit it.
+Contributions are licensed under the repository's [MIT License](./LICENSE). By submitting a contribution, you agree that it may be distributed under that license and that you have the right to submit it.
 
 ## Development baseline
 

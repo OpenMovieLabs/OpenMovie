@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "The open-source harness for building, testing, and iterating AI-native films.",
-  "license": "0BSD",
+  "license": "MIT",
   "packageManager": "pnpm@11.23.0",
   "engines": {
     "node": ">=22.22.0 <23"

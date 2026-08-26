@@ -1,7 +1,7 @@
 # OpenMovie 产品设计
 
 > 状态：MVP Product Baseline v0  
-> 更新日期：2026-08-25  
+> 更新日期：2026-08-26
 > 上位文档：[产品定义](../PRODUCT.md)  
 > 配套文档：[技术方案](./TECHNICAL_DESIGN.md) · [实施计划](./IMPLEMENTATION_PLAN.md)
 
@@ -172,19 +172,21 @@ Project
 ### 5.3 默认工作台布局
 
 ```text
-┌──────────────┬────────────────────────────────┬──────────────────┐
-│ Project      │ Task / Preview / Editor        │ Context          │
-│ Explorer     │                                │ Inspector        │
-│              │ 当前任务对话与主要创作内容      │ 计划、差异、评测  │
-│ Story        │                                │ 成本与审批        │
-│ Scenes       │                                │                  │
-│ Shots        │                                │                  │
-├──────────────┴────────────────────────────────┴──────────────────┤
-│ Runs / Build Queue / Problems / Notifications                    │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────┬──────────────────────────┬──────────────────────────────┐
+│ Project      │ Creative Conversation    │ Project Resources            │
+│ Explorer     │                          │                              │
+│              │ 用户消息                 │ 选中对象检查器                 │
+│ Story        │ Agent 回复与执行进度      │ 图片 / 视频 / Take            │
+│ Characters   │ 审批与变更提案           │ Shot 与 Current Cut           │
+│ Scenes       │                          │                              │
+│ Shots        │ 简单对话输入框            │ Resources / Versions 切换      │
+└──────────────┴──────────────────────────┴──────────────────────────────┘
 ```
 
-默认界面重点是任务与预览。依赖图、日志、参数等高级信息按需展开。
+默认且唯一的主入口是中央对话，不要求用户先理解工作流配置。左侧工程树负责定位 Story、Character、
+Scene、Shot、Timeline 与检查结果；右侧使用更大的可视区域展示媒体预览、Take、Shot、Current Cut 和
+Revision。计划、运行进度、审批和错误都作为对话内容出现，不另设底部任务控制台。依赖图、日志、
+参数等高级信息按需展开。
 
 ## 6. 核心交互模型
 

@@ -14,8 +14,9 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 ## Status
 
-Pre-release beta engineering baseline. The end-to-end desktop workflow, portable Movie IR, Revision
-and Branch model, recoverable tasks, local Harnesses, API Providers, immutable Takes, local media
+Pre-release beta engineering baseline. The conversation-first desktop now uses a three-pane workspace:
+project structure on the left, the creative Task thread in the center, and inspectable resources and
+versions on the right. The portable Movie IR, Revision and Branch model, recoverable tasks, local Harnesses, API Providers, immutable Takes, local media
 derivation, multimodal analysis, evaluation/regression gates, timecoded feedback, Current Cut render,
 backup/repair, signed release pipeline, auto-update, bilingual accessible shell, performance gate and
 Plugin development mode are implemented. Real-provider compatibility and creative quality remain
@@ -105,4 +106,4 @@ https://github.com/OpenMovieLabs/OpenMovie
 
 ## License
 
-[0BSD](./LICENSE) — use, copy, modify, and distribute for any purpose, with or without fee.
+[MIT](./LICENSE) — use, copy, modify, merge, publish, and distribute with attribution and the license notice preserved.

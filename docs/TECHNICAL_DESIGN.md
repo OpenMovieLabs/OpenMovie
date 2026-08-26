@@ -1213,9 +1213,21 @@ type PolicyDecision =
 Task 在任何外发前进入审批；`deny` 在 Step 边界再次阻断，避免仅依赖 Renderer。策略和预算都通过
 Revision 更新，可审计和回滚。
 
-## 17. Desktop 安全边界
+## 17. Desktop Renderer 交互架构与安全边界
 
-### 17.1 Renderer
+### 17.1 三栏交互架构
+
+Renderer 使用同一份 Core 状态投影出三个相互联动的区域：
+
+- 左侧 Project Explorer 读取 Story、Character、Scene、Shot、Timeline 与 Branch 摘要，只负责定位工程对象。
+- 中央 Conversation 将 Task、Step、Approval 和 Revision Proposal 渲染为连续消息；输入框只提交目标、当前对象上下文及所选 Harness/Provider，不在 Renderer 编排工作流。
+- 右侧 Resource Workspace 展示选中对象、不可变 Take、Timeline Render 与 Revision 历史。点击 Shot 或 Take 会更新中央输入的目标上下文。
+
+Renderer 不复制一套电影状态。所有可提交变更仍通过 Core 的 Proposal、Approval 和 Revision API；
+任务轮询只获取状态，完成后重新读取 Project 投影。这样界面可以像 Codex 一样简单，同时保持工程
+变更可审查、媒体来源可追溯和版本可恢复。
+
+### 17.2 Renderer
 
 - contextIsolation 开启。
 - nodeIntegration 关闭。
@@ -1224,14 +1236,14 @@ Revision 更新，可审计和回滚。
 - CSP 禁止任意远程脚本。
 - 不直接显示未经清理的模型 HTML。
 
-### 17.2 IPC
+### 17.3 IPC
 
 - 每个通道具有固定输入输出 Schema。
 - Renderer 不能传入任意文件路径或命令。
 - 请求与 Project、Window 和用户会话绑定。
 - Core 事件经过过滤后才发送 Renderer。
 
-### 17.3 本地媒体协议
+### 17.4 本地媒体协议
 
 使用自定义受控协议提供缩略图和媒体流：
 
@@ -1240,7 +1252,7 @@ Revision 更新，可审计和回滚。
 - 支持 Range 请求。
 - 设置正确 MIME、缓存和安全头。
 
-### 17.4 Secret
+### 17.5 Secret
 
 - Renderer 只在添加或更新 Provider 时提交一次明文 Secret，之后只看到掩码、状态和 credentialRef。
 - Electron Main 独占 safeStorage，优先使用 encryptStringAsync 与 decryptStringAsync。
@@ -1269,7 +1281,7 @@ interface SecretStore {
 - macOS 应保持稳定代码签名，否则应用更新可能触发重复 Keychain 授权。
 - safeStorage 不等于远程 Secret Vault；未来组织级云执行需要独立凭据服务。
 
-### 17.5 Plugin
+### 17.6 Plugin
 
 - Plugin Manifest 声明 Tools、网络域名、文件范围和 Secret 需求。
 - 默认在独立进程中运行。

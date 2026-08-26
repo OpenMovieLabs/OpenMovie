@@ -1,63 +1,73 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Aperture,
+  Bot,
+  Check,
+  ChevronDown,
   ChevronRight,
+  CircleAlert,
   Clapperboard,
-  Clock3,
+  FileText,
+  Film,
   FolderOpen,
   GitBranch,
   History,
+  Image as ImageIcon,
+  LoaderCircle,
+  MessageSquare,
+  MoreHorizontal,
+  PanelRight,
   Plus,
+  RotateCcw,
+  Search,
+  Send,
   Settings,
   Sparkles,
+  Square,
+  UserRound,
+  Video,
+  X,
 } from 'lucide-react';
 
 import type {
-  AnalysisRecord,
   BranchRecord,
   CoreHealth,
   DoctorReport,
-  FeedbackRecord,
-  FileDiff,
   HarnessHealth,
-  InitializeResult,
   ProjectSummary,
   ProviderUsageSummary,
-  RevisionRecord,
   RevisionProposalRecord,
-  RevisionDiff,
-  StorageReport,
+  RevisionRecord,
   Task,
   TakeRecord,
-  EvaluationRecord,
   TimelineRenderRecord,
 } from '@openmovie/contracts';
-import type { Character, Scene, Shot, Timeline } from '@openmovie/movie-ir';
+import type { Character, Scene, Shot } from '@openmovie/movie-ir';
 import type {
   DesktopUpdateState,
-  ProviderProbe,
   ProviderProfile,
   RecentProject,
   StoryDocuments,
 } from '../../preload/index.js';
-import { detectUiLocale, translate, type TranslationKey, type UiLocale } from './i18n.js';
+import { detectUiLocale, type UiLocale } from './i18n.js';
 
 type RuntimeState =
-  | { kind: 'loading' }
-  | { kind: 'ready'; initialize: InitializeResult; health: CoreHealth }
-  | { kind: 'error'; message: string };
+  { kind: 'loading' } | { kind: 'ready'; health: CoreHealth } | { kind: 'error'; message: string };
 
-type ProjectSection =
-  'Overview' | 'Story' | 'Characters' | 'Scenes' | 'Shots' | 'Timeline' | 'Tests';
+type ResourceSelection =
+  | { kind: 'project'; item: ProjectSummary }
+  | { kind: 'story'; item: StoryDocuments }
+  | { kind: 'character'; item: Character }
+  | { kind: 'scene'; item: Scene }
+  | { kind: 'shot'; item: Shot }
+  | { kind: 'take'; item: TakeRecord }
+  | { kind: 'render'; item: TimelineRenderRecord }
+  | { kind: 'revision'; item: RevisionRecord }
+  | { kind: 'doctor'; item: DoctorReport };
 
-const sectionTranslation: Record<ProjectSection, TranslationKey> = {
-  Overview: 'overview',
-  Story: 'story',
-  Characters: 'characters',
-  Scenes: 'scenes',
-  Shots: 'shots',
-  Timeline: 'timeline',
-  Tests: 'tests',
-};
+type ResourceView = 'resources' | 'versions';
+
+const activeTaskStatuses = new Set<Task['status']>(['queued', 'planning', 'running']);
 
 function artifactUrl(uri: string): string | undefined {
   const match = /^om:\/\/object\/sha256\/([a-f0-9]{64})$/.exec(uri);
@@ -68,55 +78,64 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
   let value = bytes;
-  let unit = -1;
+  let index = -1;
   do {
     value /= 1024;
-    unit += 1;
-  } while (value >= 1024 && unit < units.length - 1);
-  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unit]}`;
+    index += 1;
+  } while (value >= 1024 && index < units.length - 1);
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[index]}`;
+}
+
+function taskStatusText(status: Task['status'], locale: UiLocale): string {
+  const labels: Record<Task['status'], [string, string]> = {
+    queued: ['已排队', 'Queued'],
+    planning: ['正在规划', 'Planning'],
+    awaiting_approval: ['等待你的确认', 'Needs approval'],
+    running: ['正在执行', 'Running'],
+    succeeded: ['已完成', 'Completed'],
+    failed: ['失败', 'Failed'],
+    cancelled: ['已取消', 'Cancelled'],
+  };
+  return labels[status][locale === 'zh-CN' ? 0 : 1];
 }
 
 export function App(): React.JSX.Element {
   const initialized = useRef(false);
+  const threadEnd = useRef<HTMLDivElement>(null);
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' });
-  const [harnesses, setHarnesses] = useState<HarnessHealth[]>([]);
   const [project, setProject] = useState<ProjectSummary | null>(null);
-  const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
-  const [workingChanges, setWorkingChanges] = useState<FileDiff[]>([]);
-  const [selectedDiff, setSelectedDiff] = useState<RevisionDiff | null>(null);
-  const [branches, setBranches] = useState<BranchRecord[]>([]);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [harnesses, setHarnesses] = useState<HarnessHealth[]>([]);
+  const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [usage, setUsage] = useState<ProviderUsageSummary | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [shots, setShots] = useState<Shot[]>([]);
-  const [story, setStory] = useState<StoryDocuments | null>(null);
-  const [timeline, setTimeline] = useState<Timeline | null>(null);
-  const [timelineRenders, setTimelineRenders] = useState<TimelineRenderRecord[]>([]);
+  const [takes, setTakes] = useState<TakeRecord[]>([]);
+  const [renders, setRenders] = useState<TimelineRenderRecord[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [proposals, setProposals] = useState<RevisionProposalRecord[]>([]);
-  const [takesByShot, setTakesByShot] = useState<Record<string, TakeRecord[]>>({});
-  const [evaluationsByTake, setEvaluationsByTake] = useState<Record<string, EvaluationRecord[]>>(
-    {},
-  );
-  const [feedbackByTake, setFeedbackByTake] = useState<Record<string, FeedbackRecord[]>>({});
-  const [analysesByTake, setAnalysesByTake] = useState<Record<string, AnalysisRecord[]>>({});
-  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
-  const [feedbackRangeDrafts, setFeedbackRangeDrafts] = useState<
-    Record<string, { start: string; end: string }>
-  >({});
-  const [doctorReport, setDoctorReport] = useState<DoctorReport | null>(null);
-  const [storageReport, setStorageReport] = useState<StorageReport | null>(null);
-  const [section, setSection] = useState<ProjectSection>('Overview');
+  const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
+  const [branches, setBranches] = useState<BranchRecord[]>([]);
+  const [story, setStory] = useState<StoryDocuments | null>(null);
+  const [selection, setSelection] = useState<ResourceSelection | null>(null);
+  const [resourceView, setResourceView] = useState<ResourceView>('resources');
+  const [sceneTreeOpen, setSceneTreeOpen] = useState(true);
+  const [resourceSearch, setResourceSearch] = useState('');
+  const [composer, setComposer] = useState('');
+  const [plannerProviderId, setPlannerProviderId] = useState('fake');
+  const [mediaProviderId, setMediaProviderId] = useState('fake');
+  const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showTask, setShowTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [providers, setProviders] = useState<ProviderProfile[]>([]);
-  const [providerProbes, setProviderProbes] = useState<Record<string, ProviderProbe>>({});
-  const [providerUsage, setProviderUsage] = useState<ProviderUsageSummary | null>(null);
+  const [newProjectTitle, setNewProjectTitle] = useState('Untitled Movie');
+  const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
   const [monthlyBudgetUsd, setMonthlyBudgetUsd] = useState('');
   const [remoteMediaPolicy, setRemoteMediaPolicy] = useState<'allow' | 'confirm' | 'deny'>(
     'confirm',
   );
-  const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [providerForm, setProviderForm] = useState({
     id: 'openrouter',
     label: 'OpenRouter',
@@ -125,145 +144,47 @@ export function App(): React.JSX.Element {
     model: '',
     apiKey: '',
   });
-  const [plannerProviderId, setPlannerProviderId] = useState('fake');
-  const [requiresApproval, setRequiresApproval] = useState(false);
-  const [taskShotId, setTaskShotId] = useState('');
-  const [taskFeedbackId, setTaskFeedbackId] = useState<string | undefined>();
-  const [taskMediaKind, setTaskMediaKind] = useState<'image' | 'video'>('image');
-  const [mediaProviderId, setMediaProviderId] = useState('fake');
-  const [analysisProviderId, setAnalysisProviderId] = useState('fake');
-  const [analysisPrompt, setAnalysisPrompt] = useState(
-    'Describe composition, characters, motion, continuity risks, and visible defects.',
-  );
-  const [branchName, setBranchName] = useState('visual-experiment');
-  const [characterName, setCharacterName] = useState('');
-  const [characterAppearance, setCharacterAppearance] = useState('');
-  const [sceneTitle, setSceneTitle] = useState('');
-  const [sceneGoal, setSceneGoal] = useState('');
-  const [shotSceneId, setShotSceneId] = useState('');
-  const [shotDuration, setShotDuration] = useState('4');
-  const [shotFraming, setShotFraming] = useState('wide');
-  const [shotMovement, setShotMovement] = useState('');
-  const [storyPremise, setStoryPremise] = useState('');
-  const [storyThemes, setStoryThemes] = useState('');
-  const [storyWorld, setStoryWorld] = useState('');
-  const [storyRules, setStoryRules] = useState('');
-  const [title, setTitle] = useState('Untitled Movie');
-  const [goal, setGoal] = useState('Create a cinematic establishing frame for the opening scene');
-  const [lastTask, setLastTask] = useState<Task | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [uiLocale, setUiLocale] = useState<UiLocale>(() => {
-    const saved = window.localStorage.getItem('openmovie.uiLocale');
-    return saved === 'en' || saved === 'zh-CN' ? saved : detectUiLocale(navigator.language);
+    const stored = window.localStorage.getItem('openmovie.uiLocale');
+    return stored === 'en' || stored === 'zh-CN' ? stored : detectUiLocale(navigator.language);
   });
-  const t = (key: TranslationKey, values?: Record<string, string>): string =>
-    translate(uiLocale, key, values);
 
-  useEffect(() => {
-    document.documentElement.lang = uiLocale;
-    window.localStorage.setItem('openmovie.uiLocale', uiLocale);
-  }, [uiLocale]);
+  const text = (zh: string, en: string): string => (uiLocale === 'zh-CN' ? zh : en);
+  const selectedShotId =
+    selection?.kind === 'shot'
+      ? selection.item.id
+      : selection?.kind === 'take'
+        ? selection.item.shotId
+        : undefined;
 
-  useEffect(() => {
-    if (!showCreate && !showTask && !showSettings) return;
-    const previouslyFocused =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].at(-1);
-    const focusableSelector =
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    window.requestAnimationFrame(() =>
-      dialog?.querySelector<HTMLElement>(focusableSelector)?.focus(),
-    );
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        if (showSettings) setShowSettings(false);
-        else if (showTask) setShowTask(false);
-        else setShowCreate(false);
-        return;
-      }
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = [...dialog.querySelectorAll<HTMLElement>(focusableSelector)];
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      previouslyFocused?.focus();
-    };
-  }, [showCreate, showSettings, showTask]);
+  const planningProviders = useMemo(
+    () => [
+      { id: 'fake', label: text('内置离线模型', 'Built-in offline') },
+      ...harnesses
+        .filter((item) => item.available && item.id !== 'direct')
+        .map((item) => ({ id: `harness:${item.id}`, label: item.name })),
+      ...providers
+        .filter((item) =>
+          ['openai_chat', 'openai_responses', 'custom', 'plugin'].includes(item.protocol),
+        )
+        .map((item) => ({ id: item.id, label: item.label })),
+    ],
+    [harnesses, providers, uiLocale],
+  );
 
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    void Promise.all([
-      window.openMovie.initialize(),
-      window.openMovie.coreHealth(),
-      window.openMovie.listHarnesses(),
-      window.openMovie.listRecentProjects(),
-      window.openMovie.getUpdateStatus(),
-    ])
-      .then(([initialize, health, detectedHarnesses, recents, nextUpdateState]) => {
-        setRuntime({ kind: 'ready', initialize, health });
-        setHarnesses(detectedHarnesses);
-        setRecentProjects(recents);
-        setUpdateState(nextUpdateState);
-        window.openMovie.reportReady();
-      })
-      .catch((caught: unknown) => {
-        setRuntime({
-          kind: 'error',
-          message: caught instanceof Error ? caught.message : String(caught),
-        });
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!showSettings) return;
-    let disposed = false;
-    const refresh = async (): Promise<void> => {
-      const next = await window.openMovie.getUpdateStatus();
-      if (!disposed) setUpdateState(next);
-    };
-    const timer = window.setInterval(() => void refresh(), 1_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [showSettings]);
-
-  useEffect(() => {
-    if (!lastTask || !['queued', 'planning', 'running'].includes(lastTask.status)) return;
-    let disposed = false;
-    const poll = async (): Promise<void> => {
-      try {
-        const tasks = await window.openMovie.listTasks();
-        const next = tasks.find((task) => task.id === lastTask.id);
-        if (!next || disposed) return;
-        setLastTask(next);
-        if (['succeeded', 'failed', 'cancelled'].includes(next.status) && project) {
-          await loadProject(await window.openMovie.getProjectSummary());
-        }
-      } catch (caught) {
-        if (!disposed) setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    };
-    const timer = window.setInterval(() => void poll(), 750);
-    void poll();
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [lastTask?.id, lastTask?.status, project?.id]);
+  const mediaProviders = useMemo(
+    () => [
+      { id: 'fake', label: text('内置演示生成器', 'Built-in demo generator') },
+      ...providers
+        .filter((item) =>
+          mediaKind === 'video'
+            ? item.protocol === 'http_video_jobs'
+            : item.protocol === 'openai_images',
+        )
+        .map((item) => ({ id: item.id, label: item.label })),
+    ],
+    [mediaKind, providers, uiLocale],
+  );
 
   const run = async (work: () => Promise<void>): Promise<void> => {
     setBusy(true);
@@ -279,100 +200,132 @@ export function App(): React.JSX.Element {
 
   const loadProject = async (summary: ProjectSummary): Promise<void> => {
     setProject(summary);
-    setTitle(summary.title);
-    const [
-      nextRevisions,
-      tasks,
-      nextBranches,
-      nextCharacters,
-      nextScenes,
-      nextShots,
-      nextWorkingChanges,
-      nextStory,
-      nextTimeline,
-      nextTimelineRenders,
-      nextProviders,
-      nextProposals,
-      nextStorageReport,
-      nextProviderUsage,
-    ] = await Promise.all([
-      window.openMovie.listRevisions(),
-      window.openMovie.listTasks(),
-      window.openMovie.listBranches(),
-      window.openMovie.listEntities('character'),
-      window.openMovie.listEntities('scene'),
-      window.openMovie.listEntities('shot'),
-      window.openMovie.getWorkingChanges(),
-      window.openMovie.getStory(),
-      window.openMovie.getTimeline(),
-      window.openMovie.listTimelineRenders(),
-      window.openMovie.listProviders(),
-      window.openMovie.listProposals(),
-      window.openMovie.getStorageReport(),
-      window.openMovie.getProviderUsage(),
-    ]);
-    setRevisions(nextRevisions);
-    setBranches(nextBranches);
-    setCharacters(
-      nextCharacters.filter((entity): entity is Character => entity.type === 'character'),
-    );
-    setScenes(nextScenes.filter((entity): entity is Scene => entity.type === 'scene'));
-    const typedShots = nextShots.filter((entity): entity is Shot => entity.type === 'shot');
-    setShots(typedShots);
-    const takeEntries = await Promise.all(
-      typedShots.map(async (shot) => [shot.id, await window.openMovie.listTakes(shot.id)] as const),
-    );
-    const nextTakes = Object.fromEntries(takeEntries);
-    setTakesByShot(nextTakes);
-    const allTakes = takeEntries.flatMap(([, items]) => items);
-    const evaluationEntries = await Promise.all(
-      allTakes.map(
-        async (take) => [take.id, await window.openMovie.listEvaluations(take.id)] as const,
-      ),
-    );
-    setEvaluationsByTake(Object.fromEntries(evaluationEntries));
-    const feedbackEntries = await Promise.all(
-      allTakes.map(
-        async (take) =>
-          [take.id, await window.openMovie.listFeedback('take', take.id, 'open')] as const,
-      ),
-    );
-    setFeedbackByTake(Object.fromEntries(feedbackEntries));
-    const analysisEntries = await Promise.all(
-      allTakes.map(
-        async (take) => [take.id, await window.openMovie.listAnalyses(take.id)] as const,
-      ),
-    );
-    setAnalysesByTake(Object.fromEntries(analysisEntries));
-    setWorkingChanges(nextWorkingChanges);
-    setStory(nextStory);
-    setTimeline(nextTimeline);
-    setTimelineRenders(nextTimelineRenders);
-    setProviders(nextProviders);
-    setProposals(nextProposals);
-    setStorageReport(nextStorageReport);
-    setProviderUsage(nextProviderUsage);
     setMonthlyBudgetUsd(
       summary.policies.monthlyBudgetUsdMicros === null
         ? ''
         : String(summary.policies.monthlyBudgetUsdMicros / 1_000_000),
     );
     setRemoteMediaPolicy(summary.policies.remoteMediaPolicy);
-    setStoryPremise(nextStory.brief.premise);
-    setStoryThemes(nextStory.bible.themes.join(', '));
-    setStoryWorld(nextStory.bible.world);
-    setStoryRules(nextStory.bible.rules.join('\n'));
-    setDoctorReport(null);
-    setSelectedDiff(null);
-    setShotSceneId((current) => current || (nextScenes[0]?.id ?? ''));
-    setLastTask(tasks.at(-1) ?? null);
+    const [
+      nextCharacters,
+      nextScenes,
+      nextShots,
+      nextStory,
+      nextRenders,
+      nextTasks,
+      nextProposals,
+      nextRevisions,
+      nextBranches,
+      nextProviders,
+      nextUsage,
+    ] = await Promise.all([
+      window.openMovie.listEntities('character'),
+      window.openMovie.listEntities('scene'),
+      window.openMovie.listEntities('shot'),
+      window.openMovie.getStory(),
+      window.openMovie.listTimelineRenders(),
+      window.openMovie.listTasks(),
+      window.openMovie.listProposals(),
+      window.openMovie.listRevisions(),
+      window.openMovie.listBranches(),
+      window.openMovie.listProviders(),
+      window.openMovie.getProviderUsage(),
+    ]);
+    const typedCharacters = nextCharacters.filter(
+      (item): item is Character => item.type === 'character',
+    );
+    const typedScenes = nextScenes.filter((item): item is Scene => item.type === 'scene');
+    const typedShots = nextShots.filter((item): item is Shot => item.type === 'shot');
+    const takeGroups = await Promise.all(
+      typedShots.map((shot) => window.openMovie.listTakes(shot.id)),
+    );
+    setCharacters(typedCharacters);
+    setScenes(typedScenes);
+    setShots(typedShots);
+    setStory(nextStory);
+    setRenders(nextRenders);
+    setTasks(nextTasks);
+    setProposals(nextProposals);
+    setRevisions(nextRevisions);
+    setBranches(nextBranches);
+    setProviders(nextProviders);
+    setUsage(nextUsage);
+    setTakes(takeGroups.flat());
+    setSelection((current) => current ?? { kind: 'project', item: summary });
   };
+
+  const refreshProject = async (): Promise<void> => {
+    if (!project) return;
+    await loadProject(await window.openMovie.getProjectSummary());
+  };
+
+  useEffect(() => {
+    document.documentElement.lang = uiLocale;
+    window.localStorage.setItem('openmovie.uiLocale', uiLocale);
+  }, [uiLocale]);
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    void Promise.all([
+      window.openMovie.initialize(),
+      window.openMovie.coreHealth(),
+      window.openMovie.listHarnesses(),
+      window.openMovie.listRecentProjects(),
+      window.openMovie.getUpdateStatus(),
+    ])
+      .then(([, health, nextHarnesses, recents, updates]) => {
+        setRuntime({ kind: 'ready', health });
+        setHarnesses(nextHarnesses);
+        setRecentProjects(recents);
+        setUpdateState(updates);
+        const preferred = nextHarnesses.find(
+          (item) => item.available && (item.id === 'codex' || item.id === 'claude_code'),
+        );
+        if (preferred) setPlannerProviderId(`harness:${preferred.id}`);
+        window.openMovie.reportReady();
+      })
+      .catch((caught: unknown) =>
+        setRuntime({
+          kind: 'error',
+          message: caught instanceof Error ? caught.message : String(caught),
+        }),
+      );
+  }, []);
+
+  useEffect(() => {
+    if (!tasks.some((task) => activeTaskStatuses.has(task.status))) return;
+    const timer = window.setInterval(() => {
+      void window.openMovie
+        .listTasks()
+        .then(async (nextTasks) => {
+          setTasks(nextTasks);
+          if (!nextTasks.some((task) => activeTaskStatuses.has(task.status))) {
+            await refreshProject();
+          }
+        })
+        .catch((caught: unknown) =>
+          setError(caught instanceof Error ? caught.message : String(caught)),
+        );
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [tasks, project?.id]);
+
+  useEffect(() => {
+    threadEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [tasks.length, tasks.at(-1)?.status, proposals.length]);
+
+  useEffect(() => {
+    if (mediaProviders.some((item) => item.id === mediaProviderId)) return;
+    setMediaProviderId('fake');
+  }, [mediaKind, mediaProviders, mediaProviderId]);
 
   const createProject = (): void => {
     void run(async () => {
-      const created = await window.openMovie.createProject(title);
+      const created = await window.openMovie.createProject(newProjectTitle.trim());
       if (!created) return;
       setShowCreate(false);
+      setSelection(null);
       setRecentProjects(await window.openMovie.listRecentProjects());
       await loadProject(created);
     });
@@ -381,264 +334,108 @@ export function App(): React.JSX.Element {
   const openProject = (): void => {
     void run(async () => {
       const opened = await window.openMovie.openProject();
-      if (opened) {
-        setRecentProjects(await window.openMovie.listRecentProjects());
-        await loadProject(opened);
-      }
-    });
-  };
-
-  const openRecentProject = (path: string): void => {
-    void run(async () => {
-      await loadProject(await window.openMovie.openRecentProject(path));
+      if (!opened) return;
+      setSelection(null);
       setRecentProjects(await window.openMovie.listRecentProjects());
+      await loadProject(opened);
     });
   };
 
-  const renameProject = (): void => {
-    if (!project || title.trim() === project.title) return;
-    void run(async () => loadProject(await window.openMovie.renameProject(title)));
-  };
-
-  const restoreRevision = (revisionId: string): void => {
-    void run(async () => loadProject(await window.openMovie.restoreRevision(revisionId)));
-  };
-
-  const cleanProjectCache = (): void => {
-    void run(async () => setStorageReport(await window.openMovie.cleanProjectCache()));
-  };
-
-  const inspectRevision = (revisionId: string): void => {
-    void run(async () => setSelectedDiff(await window.openMovie.getRevisionDiff(revisionId)));
-  };
-
-  const createBranch = (): void => {
+  const openRecent = (path: string): void => {
     void run(async () => {
-      await window.openMovie.createBranch(branchName);
-      setBranches(await window.openMovie.listBranches());
+      setSelection(null);
+      await loadProject(await window.openMovie.openRecentProject(path));
     });
   };
 
-  const switchBranch = (name: string): void => {
+  const submitPrompt = (): void => {
+    const goal = composer.trim();
+    if (!project || !goal || busy) return;
+    setComposer('');
     void run(async () => {
-      const result = await window.openMovie.switchBranch(name);
-      await loadProject(result.project);
-    });
-  };
-
-  const createCharacter = (): void => {
-    void run(async () => {
-      await window.openMovie.createCharacter(characterName, characterAppearance);
-      setCharacterName('');
-      setCharacterAppearance('');
-      if (project) await loadProject(await window.openMovie.getProjectSummary());
-    });
-  };
-
-  const createScene = (): void => {
-    void run(async () => {
-      const result = await window.openMovie.createScene(sceneTitle, sceneGoal);
-      setSceneTitle('');
-      setSceneGoal('');
-      setShotSceneId(result.entity.id);
-      if (project) await loadProject(await window.openMovie.getProjectSummary());
-    });
-  };
-
-  const createShot = (): void => {
-    void run(async () => {
-      await window.openMovie.createShot(
-        shotSceneId,
-        Math.round(Number(shotDuration) * 1_000_000),
-        shotFraming,
-        shotMovement,
+      const result = await window.openMovie.runTask(
+        goal,
+        plannerProviderId,
+        false,
+        selectedShotId,
+        mediaKind,
+        mediaProviderId,
       );
-      if (project) await loadProject(await window.openMovie.getProjectSummary());
+      setTasks((current) => [...current, result.task]);
     });
   };
 
-  const saveStory = (): void => {
+  const approveTask = (taskId: string): void => {
     void run(async () => {
-      await window.openMovie.updateStory({
-        premise: storyPremise,
-        themes: storyThemes
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        world: storyWorld,
-        rules: storyRules
-          .split('\n')
-          .map((item) => item.trim())
-          .filter(Boolean),
-      });
-      if (project) await loadProject(await window.openMovie.getProjectSummary());
+      const result = await window.openMovie.approveTask(taskId);
+      setTasks((current) => current.map((task) => (task.id === taskId ? result.task : task)));
+    });
+  };
+
+  const cancelTask = (taskId: string): void => {
+    void run(async () => {
+      const cancelled = await window.openMovie.cancelTask(taskId);
+      setTasks((current) => current.map((task) => (task.id === taskId ? cancelled : task)));
+    });
+  };
+
+  const acceptProposal = (proposalId: string): void => {
+    void run(async () => {
+      await window.openMovie.acceptProposal(proposalId);
+      await refreshProject();
+    });
+  };
+
+  const rejectProposal = (proposalId: string): void => {
+    void run(async () => {
+      await window.openMovie.rejectProposal(proposalId);
+      setProposals(await window.openMovie.listProposals());
+    });
+  };
+
+  const runDoctor = (): void => {
+    void run(async () => {
+      setSelection({ kind: 'doctor', item: await window.openMovie.runDoctor(true) });
+      setResourceView('resources');
     });
   };
 
   const assembleTimeline = (): void => {
     void run(async () => {
-      const result = await window.openMovie.assembleTimeline();
-      setTimeline(result.timeline);
-      if (project) await loadProject(await window.openMovie.getProjectSummary());
+      await window.openMovie.assembleTimeline();
+      await refreshProject();
     });
   };
 
   const renderTimeline = (): void => {
     void run(async () => {
       const task = await window.openMovie.renderTimeline();
-      setLastTask(task);
-      setSection('Overview');
+      setTasks((current) => [...current, task]);
     });
   };
 
-  const runTask = (): void => {
+  const selectTake = (take: TakeRecord): void => {
     void run(async () => {
-      const result = await window.openMovie.runTask(
-        goal,
-        plannerProviderId,
-        requiresApproval,
-        taskShotId || undefined,
-        taskMediaKind,
-        mediaProviderId,
-        taskFeedbackId,
-      );
-      setTaskFeedbackId(undefined);
-      setLastTask(result.task);
-      await loadProject(result.project);
-      setShowTask(false);
+      await window.openMovie.selectTake(take.id);
+      setSelection({ kind: 'take', item: take });
+      await refreshProject();
     });
   };
 
-  const approveTask = (): void => {
-    if (!lastTask) return;
-    void run(async () => {
-      const result = await window.openMovie.approveTask(lastTask.id);
-      setLastTask(result.task);
-      await loadProject(result.project);
-    });
+  const restoreRevision = (revision: RevisionRecord): void => {
+    void run(async () => loadProject(await window.openMovie.restoreRevision(revision.id)));
   };
 
-  const cancelTask = (): void => {
-    if (!lastTask) return;
-    void run(async () => setLastTask(await window.openMovie.cancelTask(lastTask.id)));
-  };
-
-  const selectTake = (takeId: string): void => {
-    void run(async () => {
-      const result = await window.openMovie.selectTake(takeId);
-      await loadProject(result.project);
-    });
-  };
-
-  const createTakeFeedback = (takeId: string): void => {
-    const body = feedbackDrafts[takeId]?.trim();
-    if (!body) return;
-    void run(async () => {
-      const range = feedbackRangeDrafts[takeId];
-      const hasRange = Boolean(range?.start || range?.end);
-      const startSeconds = Number(range?.start);
-      const endSeconds = Number(range?.end);
-      if (
-        hasRange &&
-        (!range?.start ||
-          !range.end ||
-          !Number.isFinite(startSeconds) ||
-          !Number.isFinite(endSeconds) ||
-          startSeconds < 0 ||
-          endSeconds <= startSeconds)
-      ) {
-        throw new Error('Feedback timecode must have an end after its non-negative start');
-      }
-      await window.openMovie.createFeedback(
-        'take',
-        takeId,
-        body,
-        hasRange
-          ? {
-              startUs: Math.round(startSeconds * 1_000_000),
-              endUs: Math.round(endSeconds * 1_000_000),
-            }
-          : undefined,
-      );
-      setFeedbackDrafts((current) => ({ ...current, [takeId]: '' }));
-      setFeedbackRangeDrafts((current) => ({ ...current, [takeId]: { start: '', end: '' } }));
-      const next = await window.openMovie.listFeedback('take', takeId, 'open');
-      setFeedbackByTake((current) => ({
-        ...current,
-        [takeId]: next,
-      }));
-    });
-  };
-
-  const analyzeTake = (takeId: string): void => {
-    void run(async () => {
-      const task = await window.openMovie.analyzeTake(takeId, analysisProviderId, analysisPrompt);
-      setLastTask(task);
-      setSection('Overview');
-    });
-  };
-
-  const fixFeedback = (feedback: FeedbackRecord, shot: Shot, take: TakeRecord): void => {
-    void run(async () => {
-      setProviders(await window.openMovie.listProviders());
-      const timecode = feedback.timeRangeUs
-        ? ` from ${(feedback.timeRangeUs.startUs / 1_000_000).toFixed(3)}s to ${(feedback.timeRangeUs.endUs / 1_000_000).toFixed(3)}s`
-        : '';
-      setGoal(`Fix this feedback for ${shot.id}${timecode}: ${feedback.body}`);
-      setTaskShotId(shot.id);
-      setTaskMediaKind(take.artifact.mimeType.startsWith('video/') ? 'video' : 'image');
-      setMediaProviderId('fake');
-      setTaskFeedbackId(feedback.id);
-      setShowTask(true);
-    });
-  };
-
-  const openTask = (): void => {
-    void run(async () => {
-      setProviders(await window.openMovie.listProviders());
-      setTaskShotId((current) => current || (shots[0]?.id ?? ''));
-      setTaskFeedbackId(undefined);
-      setShowTask(true);
-    });
-  };
-
-  const openSettings = (): void => {
-    void run(async () => {
-      const [nextProviders, nextUpdateState, nextProviderUsage] = await Promise.all([
-        window.openMovie.listProviders(),
-        window.openMovie.getUpdateStatus(),
-        project ? window.openMovie.getProviderUsage() : Promise.resolve(null),
-      ]);
-      setProviders(nextProviders);
-      setUpdateState(nextUpdateState);
-      setProviderUsage(nextProviderUsage);
-      setShowSettings(true);
-    });
-  };
-
-  const saveProjectPolicies = (): void => {
+  const savePolicies = (): void => {
     if (!project) return;
     void run(async () => {
-      const normalized = monthlyBudgetUsd.trim();
-      const dollars = normalized === '' ? null : Number(normalized);
+      const value = monthlyBudgetUsd.trim();
+      const dollars = value ? Number(value) : null;
       if (dollars !== null && (!Number.isFinite(dollars) || dollars < 0)) {
-        throw new Error(t('invalidBudget'));
+        throw new Error(text('预算必须是非负美元金额', 'Budget must be non-negative'));
       }
       const micros = dollars === null ? null : Math.round(dollars * 1_000_000);
-      if (micros !== null && !Number.isSafeInteger(micros)) {
-        throw new Error(t('invalidBudget'));
-      }
       await loadProject(await window.openMovie.updateProjectPolicies(micros, remoteMediaPolicy));
-    });
-  };
-
-  const checkForUpdates = (): void => {
-    void run(async () => setUpdateState(await window.openMovie.checkForUpdates()));
-  };
-
-  const installUpdate = (): void => {
-    void run(async () => {
-      await window.openMovie.installUpdate();
     });
   };
 
@@ -650,1233 +447,1018 @@ export function App(): React.JSX.Element {
     });
   };
 
-  const testProvider = (providerId: string): void => {
-    void run(async () => {
-      const probe = await window.openMovie.testProvider(providerId);
-      setProviderProbes((current) => ({ ...current, [providerId]: probe }));
-    });
-  };
-
-  const runDoctor = (deep = false): void => {
-    void run(async () => setDoctorReport(await window.openMovie.runDoctor(deep)));
-  };
-
-  const acceptProposal = (proposalId: string): void => {
-    void run(async () => {
-      await window.openMovie.acceptProposal(proposalId);
-      await loadProject(await window.openMovie.getProjectSummary());
-    });
-  };
-
-  const rejectProposal = (proposalId: string): void => {
-    void run(async () => {
-      await window.openMovie.rejectProposal(proposalId);
-      setProposals(await window.openMovie.listProposals());
-    });
-  };
+  const query = resourceSearch.trim().toLowerCase();
+  const filteredShots = shots.filter((shot) =>
+    `${shot.id} ${shot.camera.framing ?? ''} ${shot.camera.movement ?? ''}`
+      .toLowerCase()
+      .includes(query),
+  );
+  const filteredTakes = takes.filter((take) =>
+    `${take.id} ${take.shotId}`.toLowerCase().includes(query),
+  );
 
   return (
-    <div className="app-shell" aria-busy={busy}>
-      <a className="skip-link" href="#main-content">
-        {t('skipToContent')}
-      </a>
-      <span className="sr-only" role="status" aria-live="polite">
-        {busy ? t('busy') : ''}
-      </span>
-      <header className="titlebar">
-        <div className="brand">
-          <Clapperboard size={20} /> OpenMovie
-          {project && <span className="project-crumb">/ {project.title}</span>}
+    <div className="studio-shell" aria-busy={busy}>
+      <aside className="project-sidebar">
+        <div className="brand-row">
+          <div className="brand-mark">
+            <Aperture size={17} />
+          </div>
+          <strong>OpenMovie</strong>
+          <button className="icon-button quiet" aria-label="Menu">
+            <MoreHorizontal size={17} />
+          </button>
         </div>
-        <div className="runtime-chip" data-state={runtime.kind}>
-          <span className="status-dot" />
-          {runtime.kind === 'ready' ? `Core ${runtime.health.status}` : runtime.kind}
-        </div>
-        <button className="icon-button" aria-label={t('settings')} onClick={openSettings}>
-          <Settings size={18} />
+        <button className="new-project-button" onClick={() => setShowCreate(true)}>
+          <Plus size={16} /> {text('新建电影', 'New movie')}
         </button>
-      </header>
-
-      {project ? (
-        <main id="main-content" className="project-workspace" tabIndex={-1}>
-          <aside className="project-nav">
-            <div className="nav-label">{t('project').toUpperCase()}</div>
-            {(
-              ['Overview', 'Story', 'Characters', 'Scenes', 'Shots', 'Timeline', 'Tests'] as const
-            ).map((item) => (
+        {project ? (
+          <>
+            <div className="sidebar-project-heading">
+              <span>{text('当前工程', 'CURRENT PROJECT')}</span>
+              <strong>{project.title}</strong>
+            </div>
+            <nav className="project-tree" aria-label={text('工程结构', 'Project structure')}>
               <button
-                key={item}
-                className={section === item ? 'nav-item active' : 'nav-item'}
-                onClick={() => setSection(item)}
+                className={selection?.kind === 'story' ? 'tree-row active' : 'tree-row'}
+                onClick={() => story && setSelection({ kind: 'story', item: story })}
               >
-                {t(sectionTranslation[item])}
-                <ChevronRight size={14} />
+                <FileText size={15} />
+                <span>{text('故事与世界观', 'Story & world')}</span>
+              </button>
+              <button
+                className={selection?.kind === 'character' ? 'tree-row active' : 'tree-row'}
+                onClick={() =>
+                  setSelection(characters[0] ? { kind: 'character', item: characters[0] } : null)
+                }
+              >
+                <UserRound size={15} />
+                <span>{text('角色', 'Characters')}</span>
+                <small>{characters.length}</small>
+              </button>
+              <button className="tree-row" onClick={() => setSceneTreeOpen((value) => !value)}>
+                {sceneTreeOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                <span>{text('场景与镜头', 'Scenes & shots')}</span>
+                <small>{shots.length}</small>
+              </button>
+              {sceneTreeOpen && (
+                <div className="tree-children">
+                  {scenes.length === 0 && (
+                    <span className="tree-empty">{text('还没有场景', 'No scenes yet')}</span>
+                  )}
+                  {scenes.map((scene) => (
+                    <div key={scene.id} className="scene-tree-group">
+                      <button
+                        className={
+                          selection?.kind === 'scene' && selection.item.id === scene.id
+                            ? 'tree-row active'
+                            : 'tree-row'
+                        }
+                        onClick={() => setSelection({ kind: 'scene', item: scene })}
+                      >
+                        <Film size={14} />
+                        <span>{scene.title}</span>
+                      </button>
+                      {shots
+                        .filter((shot) => shot.scene === scene.id)
+                        .map((shot, index) => (
+                          <button
+                            key={shot.id}
+                            className={
+                              selection?.kind === 'shot' && selection.item.id === shot.id
+                                ? 'tree-row shot-row active'
+                                : 'tree-row shot-row'
+                            }
+                            onClick={() => setSelection({ kind: 'shot', item: shot })}
+                          >
+                            <Clapperboard size={13} />
+                            <span>{text(`镜头 ${index + 1}`, `Shot ${index + 1}`)}</span>
+                          </button>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                className="tree-row"
+                onClick={() =>
+                  setSelection(renders[0] ? { kind: 'render', item: renders[0] } : null)
+                }
+              >
+                <Video size={15} />
+                <span>{text('时间线与成片', 'Timeline & cuts')}</span>
+                <small>{renders.length}</small>
+              </button>
+              <button className="tree-row" onClick={runDoctor}>
+                <Check size={15} />
+                <span>{text('工程检查', 'Project checks')}</span>
+              </button>
+            </nav>
+            <div className="sidebar-spacer" />
+            <div className="branch-row">
+              <GitBranch size={14} />
+              <span>
+                {branches.find((branch) => branch.current)?.name ?? project.currentBranch}
+              </span>
+              <small>{revisions.length}</small>
+            </div>
+          </>
+        ) : (
+          <div className="recent-area">
+            <span className="sidebar-label">{text('最近工程', 'RECENT')}</span>
+            {recentProjects.map((recent) => (
+              <button
+                key={recent.path}
+                className="recent-row"
+                onClick={() => openRecent(recent.path)}
+              >
+                <Film size={15} />
+                <span>
+                  <strong>{recent.title}</strong>
+                  <small>{recent.path}</small>
+                </span>
               </button>
             ))}
-          </aside>
-          <section className="project-main">
-            <div className="project-heading">
-              <div>
-                <div className="eyebrow">
-                  <Sparkles size={14} /> {t('movieProject').toUpperCase()}
-                </div>
-                <input
-                  className="title-input"
-                  value={title}
-                  aria-label="Movie title"
-                  onChange={(event) => setTitle(event.target.value)}
-                  onBlur={renameProject}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') renameProject();
-                  }}
-                />
-                <div className="project-meta">
-                  <span>
-                    {project.delivery.width} × {project.delivery.height} · {project.locale}
-                  </span>
-                  <label className="branch-picker">
-                    <GitBranch size={13} />
-                    <select
-                      value={project.currentBranch}
-                      onChange={(event) => switchBranch(event.target.value)}
-                      disabled={busy}
-                    >
-                      {branches.map((branch) => (
-                        <option key={branch.name} value={branch.name}>
-                          {branch.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <span>{project.root}</span>
-                </div>
-              </div>
-              <button className="primary" disabled={busy} onClick={openTask}>
-                <Sparkles size={17} /> {t('giveTask')}
-              </button>
-            </div>
-
-            {error && (
-              <div className="error-banner" role="alert">
-                {error}
-              </div>
+            {recentProjects.length === 0 && (
+              <p className="muted-copy">{text('还没有最近工程', 'No recent movies')}</p>
             )}
-            {section === 'Overview' ? (
-              <div className="project-grid">
-                <article className="empty-stage">
-                  <Clapperboard size={30} />
-                  <h2>Build the movie as structured intent</h2>
-                  <p>
-                    {lastTask
-                      ? `Task ${lastTask.status}: ${lastTask.goal}`
-                      : `${characters.length} characters · ${scenes.length} scenes · ${shots.length} shots`}
-                  </p>
-                  {lastTask && (
-                    <div className="task-steps">
-                      {lastTask.steps.map((step) => (
-                        <div key={step.id} data-status={step.status}>
-                          <span className="status-dot" />
-                          <strong>{step.title}</strong>
-                          <small>{step.status}</small>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button className="secondary" onClick={() => setSection('Scenes')}>
-                    <Plus size={17} /> Add a scene
-                  </button>
-                  {lastTask?.status === 'awaiting_approval' && (
-                    <button className="primary" disabled={busy} onClick={approveTask}>
-                      Approve and continue
-                    </button>
-                  )}
-                  {lastTask && ['queued', 'planning', 'running'].includes(lastTask.status) && (
-                    <button className="secondary" disabled={busy} onClick={cancelTask}>
-                      Cancel task
-                    </button>
-                  )}
-                  {storageReport && (
-                    <div className="storage-panel" aria-live="polite">
-                      <div>
-                        <strong>Project storage</strong>
-                        <span>
-                          {formatBytes(storageReport.totalBytes)} used ·{' '}
-                          {formatBytes(storageReport.disk.freeBytes)} free on disk
-                        </span>
-                      </div>
-                      <div className="storage-categories">
-                        <span>Media {formatBytes(storageReport.categories.objects)}</span>
-                        <span>Sources {formatBytes(storageReport.categories.sources)}</span>
-                        <span>Runtime {formatBytes(storageReport.categories.database)}</span>
-                        <span>Cache {formatBytes(storageReport.reclaimableBytes)}</span>
-                      </div>
-                      {storageReport.disk.lowSpace && (
-                        <em>Disk space is low. Clear rebuildable cache or move the project.</em>
-                      )}
-                      <button
-                        className="secondary compact"
-                        disabled={busy || storageReport.reclaimableBytes === 0}
-                        onClick={cleanProjectCache}
-                      >
-                        Clear rebuildable cache
-                      </button>
-                    </div>
-                  )}
-                  {proposals.filter((proposal) => proposal.status === 'pending').length > 0 && (
-                    <div className="proposal-list">
-                      <span className="section-label">AGENT PROPOSALS</span>
-                      {proposals
-                        .filter((proposal) => proposal.status === 'pending')
-                        .map((proposal) => (
-                          <div className="proposal-card" key={proposal.id}>
-                            <strong>{proposal.summary}</strong>
-                            <span>
-                              {proposal.plan.actions.length} structured action
-                              {proposal.plan.actions.length === 1 ? '' : 's'} · base{' '}
-                              {proposal.baseRevisionId.slice(-8)}
-                            </span>
-                            <ul>
-                              {proposal.plan.actions.map((action, index) => (
-                                <li key={`${action.type}-${index}`}>
-                                  <code>{action.type}</code>{' '}
-                                  {Object.entries(action)
-                                    .filter(([key]) => key !== 'type')
-                                    .map(
-                                      ([key, value]) =>
-                                        `${key}=${Array.isArray(value) ? value.join(', ') : String(value)}`,
-                                    )
-                                    .join(' · ')}
-                                </li>
-                              ))}
-                            </ul>
-                            {proposal.baseRevisionId !== project.currentRevisionId && (
-                              <em>
-                                The project changed; regenerate this proposal before applying.
-                              </em>
-                            )}
-                            <div className="proposal-actions">
-                              <button
-                                className="primary"
-                                disabled={
-                                  busy || proposal.baseRevisionId !== project.currentRevisionId
-                                }
-                                onClick={() => acceptProposal(proposal.id)}
-                              >
-                                Accept as Revision
-                              </button>
-                              <button
-                                className="secondary"
-                                disabled={busy}
-                                onClick={() => rejectProposal(proposal.id)}
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </article>
-                <article className="history-panel">
-                  <div className="panel-title">
-                    <History size={17} /> Revisions
-                  </div>
-                  <div className="branch-create">
-                    <input
-                      aria-label="New branch name"
-                      value={branchName}
-                      onChange={(event) => setBranchName(event.target.value)}
-                    />
-                    <button disabled={busy || !branchName.trim()} onClick={createBranch}>
-                      Branch
-                    </button>
-                  </div>
-                  {workingChanges.length > 0 && (
-                    <div className="working-changes">
-                      {workingChanges.length} uncommitted Movie IR file
-                      {workingChanges.length === 1 ? '' : 's'}
-                    </div>
-                  )}
-                  <div className="revision-list">
-                    {revisions.map((revision) => (
-                      <div className="revision-row" key={revision.id}>
-                        <span className="revision-node" />
-                        <div>
-                          <button
-                            className="revision-title"
-                            onClick={() => inspectRevision(revision.id)}
-                          >
-                            {revision.message}
-                          </button>
-                          <span>
-                            <Clock3 size={12} /> {revision.branch} ·{' '}
-                            {new Date(revision.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        {revision.id !== project.currentRevisionId && (
-                          <button disabled={busy} onClick={() => restoreRevision(revision.id)}>
-                            Restore
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {selectedDiff && (
-                    <div className="diff-panel">
-                      <strong>Structured diff</strong>
-                      {selectedDiff.files.map((file) => (
-                        <div className="diff-file" key={file.path}>
-                          <span data-status={file.status}>{file.status}</span>
-                          <code>{file.path}</code>
-                          <small>
-                            {file.changes
-                              .slice(0, 4)
-                              .map((change) => `${change.operation} ${change.pointer}`)
-                              .join(' · ')}
-                          </small>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </article>
-              </div>
-            ) : section === 'Story' ? (
-              <div className="entity-workbench">
-                <article className="entity-list-panel story-editor">
-                  <span className="section-label">STORY SOURCE</span>
-                  <h2>The narrative contract for every downstream shot.</h2>
-                  <label>
-                    Premise
-                    <textarea
-                      value={storyPremise}
-                      onChange={(event) => setStoryPremise(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    World
-                    <textarea
-                      value={storyWorld}
-                      onChange={(event) => setStoryWorld(event.target.value)}
-                    />
-                  </label>
-                </article>
-                <article className="entity-form">
-                  <h3>Story constraints</h3>
-                  <label>
-                    Themes (comma separated)
-                    <input
-                      value={storyThemes}
-                      onChange={(event) => setStoryThemes(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Rules (one per line)
-                    <textarea
-                      value={storyRules}
-                      onChange={(event) => setStoryRules(event.target.value)}
-                    />
-                  </label>
-                  <span className="form-note">
-                    {story?.screenplay.scenes.length ?? 0} scenes are linked from the screenplay.
-                  </span>
-                  <button className="primary" disabled={busy} onClick={saveStory}>
-                    Commit story Revision
-                  </button>
-                </article>
-              </div>
-            ) : section === 'Characters' ? (
-              <div className="entity-workbench">
-                <article className="entity-list-panel">
-                  <span className="section-label">CHARACTERS</span>
-                  <h2>Identity is testable project data.</h2>
-                  {characters.map((character) => (
-                    <div className="entity-row" key={character.id}>
-                      <div>
-                        <strong>{character.name}</strong>
-                        <span>{character.identity.appearance || 'Appearance not defined'}</span>
-                      </div>
-                      <code>r{character.revision}</code>
-                    </div>
-                  ))}
-                </article>
-                <article className="entity-form">
-                  <h3>New character</h3>
-                  <label>
-                    Name
-                    <input
-                      value={characterName}
-                      onChange={(event) => setCharacterName(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Appearance
-                    <textarea
-                      value={characterAppearance}
-                      onChange={(event) => setCharacterAppearance(event.target.value)}
-                    />
-                  </label>
-                  <button
-                    className="primary"
-                    disabled={busy || !characterName.trim()}
-                    onClick={createCharacter}
-                  >
-                    Create character
-                  </button>
-                </article>
-              </div>
-            ) : section === 'Scenes' ? (
-              <div className="entity-workbench">
-                <article className="entity-list-panel">
-                  <span className="section-label">SCENES</span>
-                  <h2>Narrative units with explicit goals.</h2>
-                  {scenes.map((scene) => (
-                    <div className="entity-row" key={scene.id}>
-                      <div>
-                        <strong>
-                          {scene.order + 1}. {scene.title}
-                        </strong>
-                        <span>
-                          {scene.story_goal || 'Story goal not defined'} · {scene.shots.length}{' '}
-                          shots
-                        </span>
-                      </div>
-                      <code>r{scene.revision}</code>
-                    </div>
-                  ))}
-                </article>
-                <article className="entity-form">
-                  <h3>New scene</h3>
-                  <label>
-                    Title
-                    <input
-                      value={sceneTitle}
-                      onChange={(event) => setSceneTitle(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Story goal
-                    <textarea
-                      value={sceneGoal}
-                      onChange={(event) => setSceneGoal(event.target.value)}
-                    />
-                  </label>
-                  <button
-                    className="primary"
-                    disabled={busy || !sceneTitle.trim()}
-                    onClick={createScene}
-                  >
-                    Create scene
-                  </button>
-                </article>
-              </div>
-            ) : section === 'Shots' ? (
-              <div className="entity-workbench">
-                <article className="entity-list-panel">
-                  <span className="section-label">SHOTS</span>
-                  <h2>Every generated take starts from inspectable intent.</h2>
-                  {shots.map((shot) => (
-                    <div className="shot-card" key={shot.id}>
-                      <div className="entity-row">
-                        <div>
-                          <strong>{shot.camera.framing || 'Unspecified framing'}</strong>
-                          <span>
-                            {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
-                            {shot.camera.movement || 'static'} · {shot.scene}
-                          </span>
-                        </div>
-                        <code>r{shot.revision}</code>
-                      </div>
-                      <div className="take-list">
-                        {(takesByShot[shot.id] ?? []).map((take) => {
-                          const evaluation = evaluationsByTake[take.id]?.[0];
-                          const selected = shot.selected_take === take.id;
-                          const model =
-                            typeof take.provider.model === 'string'
-                              ? take.provider.model
-                              : typeof take.provider.providerId === 'string'
-                                ? take.provider.providerId
-                                : 'Take';
-                          const previewUrl = artifactUrl(take.artifact.objectUri);
-                          return (
-                            <div className="take-block" key={take.id}>
-                              <div className="take-row" data-selected={selected}>
-                                <div className="take-preview-slot">
-                                  {previewUrl && take.artifact.mimeType.startsWith('image/') && (
-                                    <img
-                                      className="take-preview"
-                                      src={previewUrl}
-                                      alt="Generated Take"
-                                    />
-                                  )}
-                                  {previewUrl && take.artifact.mimeType.startsWith('video/') && (
-                                    <video
-                                      className="take-preview"
-                                      src={previewUrl}
-                                      controls
-                                      preload="metadata"
-                                    />
-                                  )}
-                                </div>
-                                <div>
-                                  <strong>{model}</strong>
-                                  <span>
-                                    {take.artifact.mimeType} · {take.artifact.byteSize} bytes
-                                    {evaluation
-                                      ? ` · score ${Math.round((evaluation.score ?? 0) * 100)}`
-                                      : ''}
-                                  </span>
-                                </div>
-                                <span className="evaluation-state" data-status={evaluation?.status}>
-                                  {evaluation?.status ?? 'not evaluated'}
-                                </span>
-                                <button
-                                  disabled={busy || selected}
-                                  onClick={() => selectTake(take.id)}
-                                >
-                                  {selected ? 'Selected' : 'Select'}
-                                </button>
-                              </div>
-                              <div className="take-feedback">
-                                {(analysesByTake[take.id] ?? []).slice(0, 1).map((analysis) => (
-                                  <div className="analysis-result" key={analysis.id}>
-                                    <strong>
-                                      {analysis.kind} analysis · {analysis.modelId}
-                                    </strong>
-                                    <span>{analysis.summary}</span>
-                                  </div>
-                                ))}
-                                <button
-                                  className="analyze-button"
-                                  disabled={busy}
-                                  onClick={() => analyzeTake(take.id)}
-                                >
-                                  Analyze image / video
-                                </button>
-                                {(feedbackByTake[take.id] ?? []).map((feedback) => (
-                                  <div className="feedback-row" key={feedback.id}>
-                                    <span>
-                                      {feedback.timeRangeUs && (
-                                        <code>
-                                          {(feedback.timeRangeUs.startUs / 1_000_000).toFixed(2)}–
-                                          {(feedback.timeRangeUs.endUs / 1_000_000).toFixed(2)}s
-                                        </code>
-                                      )}{' '}
-                                      {feedback.body}
-                                    </span>
-                                    <button onClick={() => fixFeedback(feedback, shot, take)}>
-                                      Fix with AI
-                                    </button>
-                                  </div>
-                                ))}
-                                <div className="feedback-compose">
-                                  <input
-                                    placeholder="What should change in this Take?"
-                                    value={feedbackDrafts[take.id] ?? ''}
-                                    onChange={(event) =>
-                                      setFeedbackDrafts((current) => ({
-                                        ...current,
-                                        [take.id]: event.target.value,
-                                      }))
-                                    }
-                                  />
-                                  <input
-                                    className="timecode-input"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    aria-label="Feedback start time in seconds"
-                                    placeholder="Start s"
-                                    value={feedbackRangeDrafts[take.id]?.start ?? ''}
-                                    onChange={(event) =>
-                                      setFeedbackRangeDrafts((current) => ({
-                                        ...current,
-                                        [take.id]: {
-                                          start: event.target.value,
-                                          end: current[take.id]?.end ?? '',
-                                        },
-                                      }))
-                                    }
-                                  />
-                                  <input
-                                    className="timecode-input"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    aria-label="Feedback end time in seconds"
-                                    placeholder="End s"
-                                    value={feedbackRangeDrafts[take.id]?.end ?? ''}
-                                    onChange={(event) =>
-                                      setFeedbackRangeDrafts((current) => ({
-                                        ...current,
-                                        [take.id]: {
-                                          start: current[take.id]?.start ?? '',
-                                          end: event.target.value,
-                                        },
-                                      }))
-                                    }
-                                  />
-                                  <button
-                                    disabled={busy || !feedbackDrafts[take.id]?.trim()}
-                                    onClick={() => createTakeFeedback(take.id)}
-                                  >
-                                    Add feedback
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {(takesByShot[shot.id] ?? []).length === 0 && (
-                          <span className="no-takes">
-                            No Takes yet. Target this shot in a task.
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </article>
-                <article className="entity-form">
-                  <h3>New shot</h3>
-                  <label>
-                    Scene
-                    <select
-                      value={shotSceneId}
-                      onChange={(event) => setShotSceneId(event.target.value)}
-                    >
-                      <option value="">Choose a scene</option>
-                      {scenes.map((scene) => (
-                        <option key={scene.id} value={scene.id}>
-                          {scene.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Duration (seconds)
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={shotDuration}
-                      onChange={(event) => setShotDuration(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Framing
-                    <input
-                      value={shotFraming}
-                      onChange={(event) => setShotFraming(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Movement
-                    <input
-                      value={shotMovement}
-                      onChange={(event) => setShotMovement(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Vision analysis provider
-                    <select
-                      value={analysisProviderId}
-                      onChange={(event) => setAnalysisProviderId(event.target.value)}
-                    >
-                      <option value="fake">Built-in deterministic Provider</option>
-                      {providers
-                        .filter(
-                          (provider) =>
-                            provider.hasSecret &&
-                            ['openai_chat', 'openai_responses', 'custom'].includes(
-                              provider.protocol,
-                            ),
-                        )
-                        .map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.label} · {provider.model}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    Analysis prompt
-                    <textarea
-                      value={analysisPrompt}
-                      onChange={(event) => setAnalysisPrompt(event.target.value)}
-                    />
-                  </label>
-                  <button
-                    className="primary"
-                    disabled={busy || !shotSceneId || !(Number(shotDuration) > 0)}
-                    onClick={createShot}
-                  >
-                    Create shot
-                  </button>
-                </article>
-              </div>
-            ) : section === 'Timeline' ? (
-              <article className="placeholder-panel timeline-panel">
-                <span className="section-label">CURRENT CUT</span>
-                <h2>Assemble selected Takes into a deterministic cut.</h2>
-                <p>
-                  Timeline clips reference Shots and immutable Takes. Rebuilding the cut creates a
-                  reviewable Revision and never overwrites generated media.
-                </p>
-                <div className="timeline-actions">
-                  <button
-                    className="secondary"
-                    disabled={busy || shots.length === 0}
-                    onClick={assembleTimeline}
-                  >
-                    Assemble from shots
-                  </button>
-                  <button
-                    className="primary"
-                    disabled={
-                      busy ||
-                      (timeline?.video_tracks[0]?.clips.length ?? 0) === 0 ||
-                      (timeline?.video_tracks[0]?.clips ?? []).some((clip) => !clip.take)
-                    }
-                    onClick={renderTimeline}
-                  >
-                    Render current cut
-                  </button>
-                </div>
-                <div className="timeline-track">
-                  {(timeline?.video_tracks[0]?.clips ?? []).map((clip) => {
-                    const shot = shots.find((item) => item.id === clip.shot);
-                    const take = (takesByShot[clip.shot] ?? []).find(
-                      (item) => item.id === clip.take,
-                    );
-                    const previewUrl = take ? artifactUrl(take.artifact.objectUri) : undefined;
-                    return (
-                      <div className="timeline-clip" key={clip.id}>
-                        {previewUrl && take?.artifact.mimeType.startsWith('image/') && (
-                          <img src={previewUrl} alt="Timeline clip" />
-                        )}
-                        {previewUrl && take?.artifact.mimeType.startsWith('video/') && (
-                          <video src={previewUrl} preload="metadata" />
-                        )}
-                        <strong>{shot?.camera.framing || clip.shot}</strong>
-                        <span>
-                          {(clip.start_us / 1_000_000).toFixed(1)}s ·{' '}
-                          {(clip.duration_us / 1_000_000).toFixed(1)}s
-                        </span>
-                        {!clip.take && <em>No Take selected</em>}
-                      </div>
-                    );
-                  })}
-                </div>
-                {timelineRenders[0] && (
-                  <div className="current-render">
-                    <span className="section-label">LATEST RENDER</span>
-                    <video
-                      src={artifactUrl(timelineRenders[0].objectUri)}
-                      controls
-                      preload="metadata"
-                    />
-                    <span>
-                      Revision {timelineRenders[0].sourceRevisionId.slice(-8)} ·{' '}
-                      {(timelineRenders[0].durationUs / 1_000_000).toFixed(1)}s ·{' '}
-                      {(timelineRenders[0].byteSize / 1_048_576).toFixed(1)} MiB
-                    </span>
-                  </div>
-                )}
-              </article>
-            ) : section === 'Tests' ? (
-              <article className="placeholder-panel doctor-panel">
-                <span className="section-label">PROJECT DOCTOR</span>
-                <h2>Verify the movie like a codebase.</h2>
-                <p>
-                  Check Movie IR schemas and references, selected Takes, SQLite integrity, Object
-                  Store files, and working changes. Deep mode also re-hashes every media object.
-                </p>
-                <div className="doctor-actions">
-                  <button className="primary" disabled={busy} onClick={() => runDoctor(false)}>
-                    Run checks
-                  </button>
-                  <button className="secondary" disabled={busy} onClick={() => runDoctor(true)}>
-                    Run deep checks
-                  </button>
-                </div>
-                {doctorReport && (
-                  <div className="doctor-report" data-status={doctorReport.status}>
-                    <strong>
-                      {doctorReport.status} · {doctorReport.checks} checks
-                    </strong>
-                    {doctorReport.issues.length === 0 ? (
-                      <span>No project integrity problems found.</span>
-                    ) : (
-                      doctorReport.issues.map((issue, index) => (
-                        <div className="doctor-issue" key={`${issue.code}-${index}`}>
-                          <code>{issue.code}</code>
-                          <span>
-                            {issue.path ? `${issue.path}: ` : ''}
-                            {issue.message}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </article>
-            ) : null}
-          </section>
-        </main>
-      ) : (
-        <main id="main-content" className="home" tabIndex={-1}>
-          <section className="hero">
-            <div className="eyebrow">
-              <Sparkles size={14} /> {t('homeEyebrow')}
-            </div>
-            <h1>{t('homeTitle')}</h1>
-            <p>{t('homeSubtitle')}</p>
-            <div className="actions">
-              <button className="primary" disabled={busy} onClick={() => setShowCreate(true)}>
-                <Plus size={18} /> {t('newMovie')}
-              </button>
-              <button className="secondary" disabled={busy} onClick={openProject}>
-                <FolderOpen size={18} /> {t('openProject')}
-              </button>
-            </div>
-            {error && (
-              <div className="error-banner" role="alert">
-                {error}
-              </div>
-            )}
-          </section>
+          </div>
+        )}
+        <div className="sidebar-footer">
+          <button className="tree-row" onClick={openProject}>
+            <FolderOpen size={15} /> {text('打开工程', 'Open project')}
+          </button>
+          <button className="tree-row" onClick={() => setShowSettings(true)}>
+            <Settings size={15} /> {text('设置', 'Settings')}
+          </button>
+        </div>
+      </aside>
 
-          <section className="workspace-card">
-            <div>
-              <span className="section-label">{t('recentProjects').toUpperCase()}</span>
-              <h2>{recentProjects.length > 0 ? t('continueMovie') : t('noMovies')}</h2>
-              {recentProjects.length > 0 ? (
-                <div className="recent-list">
-                  {recentProjects.slice(0, 6).map((recent) => (
-                    <button
-                      className="recent-project"
-                      key={recent.path}
-                      disabled={busy}
-                      onClick={() => openRecentProject(recent.path)}
-                    >
-                      <strong>{recent.title}</strong>
-                      <span>{recent.path}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p>{t('noMoviesHelp')}</p>
-              )}
-            </div>
-            <div className="health-stack">
-              <div className="runtime-status" data-state={runtime.kind}>
-                <span className="status-dot" />
-                {runtime.kind === 'loading' && t('startingCore')}
-                {runtime.kind === 'error' && t('coreUnavailable', { message: runtime.message })}
-                {runtime.kind === 'ready' &&
-                  `Core ${runtime.health.status} · protocol ${runtime.initialize.protocolVersion}`}
+      <main className="conversation-pane">
+        <header className="conversation-header">
+          <div>
+            <span className="eyebrow">{text('创作会话', 'CREATIVE SESSION')}</span>
+            <h1>{project?.title ?? text('开始一部电影', 'Start a movie')}</h1>
+          </div>
+          <div className={`runtime-state ${runtime.kind}`}>
+            <span />
+            {runtime.kind === 'ready'
+              ? text('本地 Core 已连接', 'Local Core connected')
+              : runtime.kind === 'error'
+                ? runtime.message
+                : text('正在连接…', 'Connecting…')}
+          </div>
+        </header>
+        <section className="conversation-thread" aria-live="polite">
+          {!project ? (
+            <div className="conversation-welcome">
+              <div className="welcome-symbol">
+                <Sparkles size={27} />
               </div>
-              <div className="harness-list">
-                {runtime.kind === 'ready' && (
-                  <span data-available={runtime.health.media.ffmpeg.available}>
-                    FFmpeg {runtime.health.media.ffmpeg.source}
-                  </span>
+              <h2>{text('从一句话开始你的电影', 'Build your film from a conversation')}</h2>
+              <p>
+                {text(
+                  '告诉 OpenMovie 你的故事、风格或想要修改的镜头。工程结构与生成资源会在两侧自动组织。',
+                  'Describe the story, style, or shot you want to change. OpenMovie keeps the project and generated resources organized around the conversation.',
                 )}
-                {harnesses.map((harness) => (
-                  <span key={harness.id} data-available={harness.available}>
-                    {harness.name}
-                  </span>
+              </p>
+              <div className="welcome-actions">
+                <button className="primary-button" onClick={() => setShowCreate(true)}>
+                  <Plus size={16} /> {text('创建电影工程', 'Create movie project')}
+                </button>
+                <button className="secondary-button" onClick={openProject}>
+                  <FolderOpen size={16} /> {text('打开已有工程', 'Open existing project')}
+                </button>
+              </div>
+            </div>
+          ) : tasks.length === 0 && proposals.length === 0 ? (
+            <div className="conversation-welcome project-welcome">
+              <div className="welcome-symbol small">
+                <MessageSquare size={24} />
+              </div>
+              <h2>{text('你想先做什么？', 'What should we make first?')}</h2>
+              <p>
+                {text(
+                  '直接描述目标。OpenMovie 会使用选定的本地 Harness 或模型进行规划，并把工程变更作为可审查提案。',
+                  'Describe the outcome. OpenMovie plans with the selected local Harness or model and returns project changes as a reviewable proposal.',
+                )}
+              </p>
+              <div className="prompt-suggestions">
+                {[
+                  text(
+                    '帮我规划一个三分钟科幻短片的第一幕',
+                    'Plan act one of a three-minute sci-fi short',
+                  ),
+                  text('建立主要角色和视觉风格', 'Define the main character and visual language'),
+                  text('把开场设计成三个连续镜头', 'Design the opening as three continuous shots'),
+                ].map((prompt) => (
+                  <button key={prompt} onClick={() => setComposer(prompt)}>
+                    <Sparkles size={14} /> {prompt}
+                  </button>
                 ))}
               </div>
             </div>
-          </section>
-        </main>
-      )}
-
-      {showCreate && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setShowCreate(false)}
-        >
-          <div
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <span className="section-label">NEW PROJECT</span>
-            <h2 id="create-title">What are you making?</h2>
-            <label>
-              Movie title
-              <input
-                autoFocus
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') createProject();
-                }}
-              />
-            </label>
-            <p>You will choose where the portable project folder is stored next.</p>
-            <div className="modal-actions">
-              <button className="secondary" onClick={() => setShowCreate(false)}>
-                Cancel
-              </button>
-              <button className="primary" disabled={busy || !title.trim()} onClick={createProject}>
-                Choose location
+          ) : (
+            <div className="message-list">
+              {[...tasks]
+                .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+                .map((task) => (
+                  <div className="task-conversation" key={task.id}>
+                    <article className="message user-message">
+                      <div className="message-avatar">
+                        <UserRound size={15} />
+                      </div>
+                      <div>
+                        <span>{text('你', 'You')}</span>
+                        <p>{task.goal}</p>
+                      </div>
+                    </article>
+                    <article className="message assistant-message">
+                      <div className="message-avatar assistant">
+                        <Aperture size={15} />
+                      </div>
+                      <div className="assistant-content">
+                        <div className="assistant-heading">
+                          <span>OpenMovie</span>
+                          <div className={`task-status ${task.status}`}>
+                            {activeTaskStatuses.has(task.status) && <LoaderCircle size={12} />}
+                            {taskStatusText(task.status, uiLocale)}
+                          </div>
+                        </div>
+                        {task.status === 'failed' ? (
+                          <p className="task-error">
+                            {task.error ?? text('任务执行失败', 'Task failed')}
+                          </p>
+                        ) : (
+                          <p>
+                            {task.status === 'succeeded'
+                              ? text(
+                                  '任务已完成。新的工程变更或媒体资源已经出现在右侧。',
+                                  'The task is complete. New project changes or media are available on the right.',
+                                )
+                              : task.status === 'awaiting_approval'
+                                ? text(
+                                    '这个任务将调用远程服务，需要你确认后才能继续。',
+                                    'This task will contact a remote service and needs your approval.',
+                                  )
+                                : text(
+                                    '正在分析工程并执行任务，你可以继续浏览右侧资源。',
+                                    'I am inspecting the project and working through the task.',
+                                  )}
+                          </p>
+                        )}
+                        <div className="task-steps">
+                          {task.steps.map((step) => (
+                            <div key={step.id} className={`task-step ${step.status}`}>
+                              <span className="step-indicator" />
+                              <span>{step.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="message-actions">
+                          {task.status === 'awaiting_approval' && (
+                            <button
+                              className="primary-button compact"
+                              onClick={() => approveTask(task.id)}
+                            >
+                              <Check size={14} /> {text('批准并继续', 'Approve and continue')}
+                            </button>
+                          )}
+                          {activeTaskStatuses.has(task.status) && (
+                            <button className="text-button" onClick={() => cancelTask(task.id)}>
+                              <Square size={12} /> {text('停止', 'Stop')}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                ))}
+              {proposals
+                .filter((proposal) => proposal.status === 'pending')
+                .map((proposal) => (
+                  <article className="message assistant-message" key={proposal.id}>
+                    <div className="message-avatar assistant">
+                      <Aperture size={15} />
+                    </div>
+                    <div className="assistant-content proposal-message">
+                      <div className="assistant-heading">
+                        <span>{text('工程修改提案', 'Project change proposal')}</span>
+                        <div className="task-status awaiting_approval">
+                          {proposal.plan.actions.length} {text('项修改', 'changes')}
+                        </div>
+                      </div>
+                      <p>{proposal.summary}</p>
+                      <div className="proposal-actions-preview">
+                        {proposal.plan.actions.map((action, index) => (
+                          <code key={`${proposal.id}-${index}`}>{action.type}</code>
+                        ))}
+                      </div>
+                      <div className="message-actions">
+                        <button
+                          className="primary-button compact"
+                          onClick={() => acceptProposal(proposal.id)}
+                        >
+                          <Check size={14} /> {text('应用到工程', 'Apply to project')}
+                        </button>
+                        <button className="text-button" onClick={() => rejectProposal(proposal.id)}>
+                          <X size={13} /> {text('拒绝', 'Reject')}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          )}
+          <div ref={threadEnd} />
+        </section>
+        {error && (
+          <div className="inline-error" role="alert">
+            <CircleAlert size={15} />
+            <span>{error}</span>
+            <button onClick={() => setError(null)} aria-label="Dismiss">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        <footer className="composer-area">
+          <div className={project ? 'composer' : 'composer disabled'}>
+            <textarea
+              value={composer}
+              disabled={!project || busy}
+              placeholder={
+                project
+                  ? text('描述你想创作或修改的内容…', 'Describe what you want to create or change…')
+                  : text('先创建或打开一个电影工程', 'Create or open a movie project first')
+              }
+              rows={3}
+              onChange={(event) => setComposer(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  submitPrompt();
+                }
+              }}
+            />
+            <div className="composer-toolbar">
+              <div className="composer-options">
+                <label>
+                  <Bot size={13} />
+                  <select
+                    value={plannerProviderId}
+                    onChange={(event) => setPlannerProviderId(event.target.value)}
+                    disabled={!project}
+                  >
+                    {planningProviders.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {mediaKind === 'image' ? <ImageIcon size={13} /> : <Video size={13} />}
+                  <select
+                    value={mediaKind}
+                    onChange={(event) => setMediaKind(event.target.value as 'image' | 'video')}
+                    disabled={!project}
+                  >
+                    <option value="image">{text('图片', 'Image')}</option>
+                    <option value="video">{text('视频', 'Video')}</option>
+                  </select>
+                </label>
+                <label>
+                  <Sparkles size={13} />
+                  <select
+                    value={mediaProviderId}
+                    onChange={(event) => setMediaProviderId(event.target.value)}
+                    disabled={!project}
+                  >
+                    {mediaProviders.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedShotId && (
+                  <span className="target-chip">
+                    <Clapperboard size={12} /> {selectedShotId}
+                    <button onClick={() => setSelection(null)} aria-label="Clear target">
+                      <X size={11} />
+                    </button>
+                  </span>
+                )}
+              </div>
+              <button
+                className="send-button"
+                aria-label={text('发送', 'Send')}
+                disabled={!project || busy || !composer.trim()}
+                onClick={submitPrompt}
+              >
+                {busy ? <LoaderCircle size={17} /> : <Send size={17} />}
               </button>
             </div>
           </div>
-        </div>
-      )}
-      {showTask && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowTask(false)}>
+          <small>
+            {text('Enter 发送 · Shift+Enter 换行', 'Enter to send · Shift+Enter for newline')}
+          </small>
+        </footer>
+      </main>
+
+      <aside className="resource-pane">
+        <header className="resource-header">
+          <div className="resource-tabs">
+            <button
+              className={resourceView === 'resources' ? 'active' : ''}
+              onClick={() => setResourceView('resources')}
+            >
+              <PanelRight size={14} /> {text('资源', 'Resources')}
+            </button>
+            <button
+              className={resourceView === 'versions' ? 'active' : ''}
+              onClick={() => setResourceView('versions')}
+            >
+              <History size={14} /> {text('版本', 'Versions')}
+            </button>
+          </div>
+          {project && (
+            <div className="resource-count">
+              {takes.length + renders.length} {text('个媒体资源', 'media assets')}
+            </div>
+          )}
+        </header>
+        {!project ? (
+          <div className="resource-empty">
+            <PanelRight size={25} />
+            <strong>{text('工程资源会显示在这里', 'Project resources appear here')}</strong>
+            <p>
+              {text(
+                '镜头、Take、分析和成片都会保持可检查。',
+                'Shots, Takes, analyses, and cuts stay inspectable.',
+              )}
+            </p>
+          </div>
+        ) : resourceView === 'versions' ? (
+          <div className="resource-scroll versions-view">
+            <div className="pane-section-heading">
+              <div>
+                <span>{text('当前分支', 'CURRENT BRANCH')}</span>
+                <h2>{project.currentBranch}</h2>
+              </div>
+              <GitBranch size={18} />
+            </div>
+            <div className="revision-list">
+              {revisions.map((revision, index) => (
+                <button
+                  key={revision.id}
+                  className={
+                    selection?.kind === 'revision' && selection.item.id === revision.id
+                      ? 'revision-card selected'
+                      : 'revision-card'
+                  }
+                  onClick={() => setSelection({ kind: 'revision', item: revision })}
+                >
+                  <span className="revision-dot" />
+                  <div>
+                    <strong>{revision.message}</strong>
+                    <small>
+                      {index === 0 ? text('当前版本', 'Current') : revision.authorId} ·{' '}
+                      {new Date(revision.createdAt).toLocaleString()}
+                    </small>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {selection?.kind === 'revision' && (
+              <div className="inspector-card">
+                <span className="section-kicker">REVISION</span>
+                <h3>{selection.item.message}</h3>
+                <code>{selection.item.id}</code>
+                <p>
+                  {selection.item.changedPaths.join('\n') ||
+                    text('没有文件变化', 'No file changes')}
+                </p>
+                <button
+                  className="secondary-button"
+                  onClick={() => restoreRevision(selection.item)}
+                >
+                  <RotateCcw size={14} /> {text('恢复为新版本', 'Restore as new revision')}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="resource-scroll">
+            <div className="resource-search">
+              <Search size={14} />
+              <input
+                value={resourceSearch}
+                placeholder={text('搜索工程资源', 'Search project resources')}
+                onChange={(event) => setResourceSearch(event.target.value)}
+              />
+            </div>
+            {selection && (
+              <ResourceInspector
+                selection={selection}
+                locale={uiLocale}
+                onSelectTake={selectTake}
+              />
+            )}
+            <section className="resource-section">
+              <div className="section-title">
+                <span>{text('媒体', 'MEDIA')}</span>
+                <small>{takes.length + renders.length}</small>
+              </div>
+              {takes.length === 0 && renders.length === 0 ? (
+                <div className="empty-resource-card">
+                  <ImageIcon size={19} />
+                  <span>
+                    {text(
+                      '生成的图片和视频会显示在这里',
+                      'Generated images and videos appear here',
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <div className="media-grid">
+                  {filteredTakes.map((take) => {
+                    const url = artifactUrl(take.artifact.objectUri);
+                    return (
+                      <button
+                        key={take.id}
+                        className="media-card"
+                        onClick={() => setSelection({ kind: 'take', item: take })}
+                      >
+                        <div className="media-preview">
+                          {url && take.artifact.mimeType.startsWith('image/') ? (
+                            <img src={url} alt="" />
+                          ) : url && take.artifact.mimeType.startsWith('video/') ? (
+                            <video src={url} muted />
+                          ) : (
+                            <Film size={21} />
+                          )}
+                        </div>
+                        <span>{take.shotId}</span>
+                        <small>{formatBytes(take.artifact.byteSize)}</small>
+                      </button>
+                    );
+                  })}
+                  {renders.map((render) => (
+                    <button
+                      key={render.id}
+                      className="media-card render-card"
+                      onClick={() => setSelection({ kind: 'render', item: render })}
+                    >
+                      <div className="media-preview">
+                        <video src={artifactUrl(render.objectUri)} muted />
+                        <span className="cut-badge">CUT</span>
+                      </div>
+                      <span>{text('当前成片', 'Current cut')}</span>
+                      <small>{(render.durationUs / 1_000_000).toFixed(1)}s</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section className="resource-section">
+              <div className="section-title">
+                <span>{text('镜头', 'SHOTS')}</span>
+                <small>{shots.length}</small>
+              </div>
+              <div className="shot-grid">
+                {filteredShots.map((shot, index) => (
+                  <button
+                    key={shot.id}
+                    className={
+                      selection?.kind === 'shot' && selection.item.id === shot.id
+                        ? 'shot-card selected'
+                        : 'shot-card'
+                    }
+                    onClick={() => setSelection({ kind: 'shot', item: shot })}
+                  >
+                    <div className="shot-number">{String(index + 1).padStart(2, '0')}</div>
+                    <div>
+                      <strong>{shot.camera.framing || text('未设置景别', 'No framing')}</strong>
+                      <small>
+                        {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
+                        {takes.filter((take) => take.shotId === shot.id).length} Takes
+                      </small>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="resource-section compact-section">
+              <div className="section-title">
+                <span>{text('工程操作', 'PROJECT ACTIONS')}</span>
+              </div>
+              <div className="project-actions-grid">
+                <button className="secondary-button" onClick={assembleTimeline}>
+                  <Clapperboard size={14} /> {text('组装时间线', 'Assemble timeline')}
+                </button>
+                <button className="secondary-button" onClick={renderTimeline}>
+                  <Video size={14} /> {text('渲染成片', 'Render cut')}
+                </button>
+                <button className="secondary-button" onClick={runDoctor}>
+                  <Check size={14} /> {text('检查工程', 'Run checks')}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+      </aside>
+
+      {showCreate && (
+        <div className="modal-backdrop" onMouseDown={() => setShowCreate(false)}>
           <div
-            className="modal"
+            className="dialog"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="task-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="section-label">NEW TASK</span>
-            <h2 id="task-title">What should OpenMovie make?</h2>
-            <label>
-              Goal
-              <textarea autoFocus value={goal} onChange={(event) => setGoal(event.target.value)} />
-            </label>
-            <label>
-              Planning model
-              <select
-                value={plannerProviderId}
-                onChange={(event) => setPlannerProviderId(event.target.value)}
-              >
-                <option value="fake">Built-in Fake Provider</option>
-                {harnesses.some((harness) => harness.id === 'codex' && harness.available) && (
-                  <option value="harness:codex">Local Codex Harness</option>
-                )}
-                {harnesses.some((harness) => harness.id === 'claude_code' && harness.available) && (
-                  <option value="harness:claude_code">Local Claude Code Harness</option>
-                )}
-                {providers
-                  .filter(
-                    (provider) =>
-                      provider.hasSecret &&
-                      ['openai_chat', 'openai_responses', 'custom', 'plugin'].includes(
-                        provider.protocol,
-                      ),
-                  )
-                  .map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.label} · {provider.model}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={requiresApproval}
-                onChange={(event) => setRequiresApproval(event.target.checked)}
-              />
-              Pause for approval before generation
-            </label>
-            <label>
-              Target shot
-              <select value={taskShotId} onChange={(event) => setTaskShotId(event.target.value)}>
-                <option value="">Project-level fixture</option>
-                {shots.map((shot) => (
-                  <option key={shot.id} value={shot.id}>
-                    {shot.id} · {shot.camera.framing || 'shot'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Media output
-              <select
-                value={taskMediaKind}
-                onChange={(event) => {
-                  setTaskMediaKind(event.target.value as 'image' | 'video');
-                  setMediaProviderId('fake');
-                }}
-              >
-                <option value="image">Image Take</option>
-                <option value="video">Video Take</option>
-              </select>
-            </label>
-            <label>
-              Media provider
-              <select
-                value={mediaProviderId}
-                onChange={(event) => setMediaProviderId(event.target.value)}
-              >
-                <option value="fake">Built-in deterministic Provider</option>
-                {providers
-                  .filter(
-                    (provider) =>
-                      provider.hasSecret &&
-                      (taskMediaKind === 'video'
-                        ? provider.protocol === 'http_video_jobs'
-                        : provider.protocol === 'openai_images'),
-                  )
-                  .map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.label} · {provider.model}
-                    </option>
-                  ))}
-              </select>
-            </label>
+            <button className="dialog-close" onClick={() => setShowCreate(false)}>
+              <X size={16} />
+            </button>
+            <span className="section-kicker">NEW PROJECT</span>
+            <h2>{text('创建电影工程', 'Create a movie project')}</h2>
             <p>
-              The planning model produces visual intent; built-in deterministic media keeps local
-              development free of paid generation calls.
+              {text(
+                '工程目录包含可版本化的电影定义和本地媒体对象。',
+                'The folder contains versioned movie definitions and local media objects.',
+              )}
             </p>
-            <div className="modal-actions">
-              <button className="secondary" onClick={() => setShowTask(false)}>
-                Cancel
+            <label className="field-label">
+              {text('电影名称', 'Movie title')}
+              <input
+                autoFocus
+                value={newProjectTitle}
+                onChange={(event) => setNewProjectTitle(event.target.value)}
+              />
+            </label>
+            <div className="dialog-actions">
+              <button className="secondary-button" onClick={() => setShowCreate(false)}>
+                {text('取消', 'Cancel')}
               </button>
-              <button className="primary" disabled={busy || !goal.trim()} onClick={runTask}>
-                Run task
+              <button
+                className="primary-button"
+                disabled={busy || !newProjectTitle.trim()}
+                onClick={createProject}
+              >
+                {text('选择目录并创建', 'Choose folder and create')}
               </button>
             </div>
           </div>
         </div>
       )}
       {showSettings && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setShowSettings(false)}
-        >
+        <div className="modal-backdrop" onMouseDown={() => setShowSettings(false)}>
           <div
-            className="modal settings-modal"
+            className="dialog settings-dialog"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="settings-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <span className="section-label">SETTINGS</span>
-            <h2 id="settings-title">Model providers</h2>
-            {providers.map((provider) => (
-              <div className="provider-row" key={provider.id}>
+            <button className="dialog-close" onClick={() => setShowSettings(false)}>
+              <X size={16} />
+            </button>
+            <span className="section-kicker">SETTINGS</span>
+            <h2>{text('OpenMovie 设置', 'OpenMovie settings')}</h2>
+            <div className="settings-section">
+              <h3>{text('应用', 'Application')}</h3>
+              <div className="settings-row">
                 <div>
-                  <strong>{provider.label}</strong>
-                  <span>
-                    {provider.protocol} · {provider.model || provider.baseUrl}
-                  </span>
-                  {providerProbes[provider.id] && (
-                    <span className={`probe-result ${providerProbes[provider.id]?.status}`}>
-                      {providerProbes[provider.id]?.message} ·{' '}
-                      {providerProbes[provider.id]?.latencyMs} ms
-                    </span>
-                  )}
+                  <strong>{text('语言', 'Language')}</strong>
+                  <small>{text('只保存在当前设备', 'Stored on this device')}</small>
                 </div>
-                <div className="provider-actions">
-                  <span className={provider.hasSecret ? 'key-state ready' : 'key-state'}>
-                    {provider.hasSecret ? 'Key saved' : 'No key'}
-                  </span>
-                  <button
-                    className="secondary compact"
-                    disabled={busy || !provider.hasSecret}
-                    onClick={() => testProvider(provider.id)}
-                  >
-                    Test
-                  </button>
-                </div>
-              </div>
-            ))}
-            <div className="provider-form">
-              <label>
-                Provider name
-                <input
-                  value={providerForm.label}
-                  onChange={(event) =>
-                    setProviderForm({ ...providerForm, label: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                API protocol
                 <select
-                  value={providerForm.protocol}
-                  onChange={(event) =>
-                    setProviderForm({
-                      ...providerForm,
-                      protocol: event.target.value as ProviderProfile['protocol'],
-                    })
-                  }
+                  value={uiLocale}
+                  onChange={(event) => setUiLocale(event.target.value as UiLocale)}
                 >
-                  <option value="openai_chat">OpenAI-compatible Chat / Vision</option>
-                  <option value="openai_responses">OpenAI Responses / Vision</option>
-                  <option value="custom">Custom OpenAI Chat-compatible</option>
-                  <option value="openai_images">OpenAI-compatible Images</option>
-                  <option value="http_video_jobs">Async HTTP Video Jobs</option>
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en">English</option>
                 </select>
-              </label>
-              <label>
-                Base URL
-                <input
-                  value={providerForm.baseUrl}
-                  onChange={(event) =>
-                    setProviderForm({ ...providerForm, baseUrl: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Model
-                <input
-                  placeholder="model/name"
-                  value={providerForm.model}
-                  onChange={(event) =>
-                    setProviderForm({ ...providerForm, model: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                API Key
-                <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder="Stored with system encryption"
-                  value={providerForm.apiKey}
-                  onChange={(event) =>
-                    setProviderForm({ ...providerForm, apiKey: event.target.value })
-                  }
-                />
-              </label>
-            </div>
-            <span className="section-label settings-subsection">
-              {t('application').toUpperCase()}
-            </span>
-            {project && (
-              <div className="policy-panel">
-                <div className="provider-row" aria-live="polite">
-                  <div>
-                    <strong>{t('providerUsage')}</strong>
-                    <span>
-                      {providerUsage
-                        ? t('providerUsageSummary', {
-                            period: providerUsage.period,
-                            cost: (providerUsage.costUsdMicros / 1_000_000).toFixed(4),
-                            runs: String(providerUsage.runCount),
-                            unpriced: String(providerUsage.unpricedRunCount),
-                          })
-                        : t('loadingUsage')}
-                    </span>
-                  </div>
+              </div>
+              <div className="settings-row">
+                <div>
+                  <strong>OpenMovie {updateState?.currentVersion ?? ''}</strong>
+                  <small>{updateState?.message ?? ''}</small>
                 </div>
-                <div className="provider-form policy-form">
-                  <label>
-                    {t('monthlyBudget')}
+                <span className="settings-value">
+                  {runtime.kind === 'ready' && runtime.health.media.ffmpeg.available
+                    ? 'FFmpeg ready'
+                    : 'FFmpeg unavailable'}
+                </span>
+              </div>
+            </div>
+            {project && (
+              <div className="settings-section">
+                <h3>{text('工程策略', 'Project policy')}</h3>
+                <div className="settings-columns">
+                  <label className="field-label">
+                    {text('月度费用上限（美元）', 'Monthly budget (USD)')}
                     <input
-                      inputMode="decimal"
-                      min="0"
-                      placeholder={t('unlimited')}
                       value={monthlyBudgetUsd}
+                      placeholder={text('不限', 'Unlimited')}
                       onChange={(event) => setMonthlyBudgetUsd(event.target.value)}
                     />
                   </label>
-                  <label>
-                    {t('remoteMediaPolicy')}
+                  <label className="field-label">
+                    {text('远程数据', 'Remote data')}
                     <select
                       value={remoteMediaPolicy}
                       onChange={(event) =>
                         setRemoteMediaPolicy(event.target.value as 'allow' | 'confirm' | 'deny')
                       }
                     >
-                      <option value="confirm">{t('remoteConfirm')}</option>
-                      <option value="allow">{t('remoteAllow')}</option>
-                      <option value="deny">{t('remoteDeny')}</option>
+                      <option value="confirm">{text('每次确认', 'Confirm')}</option>
+                      <option value="allow">{text('允许', 'Allow')}</option>
+                      <option value="deny">{text('禁止', 'Deny')}</option>
                     </select>
                   </label>
                 </div>
-                <p>{t('budgetDisclosure')}</p>
-                <button className="secondary compact" disabled={busy} onClick={saveProjectPolicies}>
-                  {t('savePolicies')}
+                <p className="settings-note">
+                  {usage
+                    ? text(
+                        `${usage.period}：${usage.runCount} 次调用，已报告 $${(usage.costUsdMicros / 1_000_000).toFixed(4)}，${usage.unpricedRunCount} 次未定价。`,
+                        `${usage.period}: ${usage.runCount} calls, $${(usage.costUsdMicros / 1_000_000).toFixed(4)} reported, ${usage.unpricedRunCount} unpriced.`,
+                      )
+                    : ''}
+                </p>
+                <button className="secondary-button" onClick={savePolicies}>
+                  {text('保存工程策略', 'Save project policy')}
                 </button>
               </div>
             )}
-            <div className="provider-row">
-              <div>
-                <strong>{t('language')}</strong>
-                <span>The interface language is stored only on this device.</span>
-              </div>
-              <select
-                aria-label={t('language')}
-                value={uiLocale}
-                onChange={(event) => setUiLocale(event.target.value as UiLocale)}
-              >
-                <option value="en">{t('english')}</option>
-                <option value="zh-CN">{t('chinese')}</option>
-              </select>
-            </div>
-            <div className="provider-row" aria-live="polite">
-              <div>
-                <strong>OpenMovie {updateState?.currentVersion ?? ''}</strong>
-                <span>{updateState?.message ?? 'Loading update status…'}</span>
-              </div>
-              <div className="provider-actions">
-                {updateState?.status === 'downloaded' ? (
-                  <button className="primary compact" disabled={busy} onClick={installUpdate}>
-                    Install and restart
-                  </button>
-                ) : (
-                  <button
-                    className="secondary compact"
-                    disabled={
-                      busy ||
-                      !updateState ||
-                      ['disabled', 'checking', 'available', 'downloading'].includes(
-                        updateState.status,
-                      )
-                    }
-                    onClick={checkForUpdates}
-                  >
-                    Check for updates
-                  </button>
-                )}
-              </div>
-            </div>
-            {runtime.kind === 'ready' && (
-              <div className="provider-row">
-                <div>
-                  <strong>FFmpeg media runtime</strong>
-                  <span>
-                    {runtime.health.media.ffmpeg.available
-                      ? `${runtime.health.media.ffmpeg.source} · ${runtime.health.media.ffmpeg.version ?? 'version available'}`
-                      : 'Unavailable · reinstall OpenMovie before rendering or video analysis'}
+            <div className="settings-section">
+              <h3>{text('模型 Provider', 'Model providers')}</h3>
+              {providers.map((provider) => (
+                <div className="settings-row" key={provider.id}>
+                  <div>
+                    <strong>{provider.label}</strong>
+                    <small>
+                      {provider.protocol} · {provider.model}
+                    </small>
+                  </div>
+                  <span className={`provider-state ${provider.hasSecret ? 'ready' : ''}`}>
+                    {provider.hasSecret ? text('已连接', 'Connected') : text('缺少密钥', 'No key')}
                   </span>
                 </div>
-                <span
-                  className={
-                    runtime.health.media.ffmpeg.available ? 'key-state ready' : 'key-state'
-                  }
-                >
-                  {runtime.health.media.ffmpeg.available ? 'Ready' : 'Missing'}
-                </span>
+              ))}
+              <div className="provider-form-grid">
+                <label className="field-label">
+                  ID
+                  <input
+                    value={providerForm.id}
+                    onChange={(event) =>
+                      setProviderForm({ ...providerForm, id: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="field-label">
+                  {text('名称', 'Name')}
+                  <input
+                    value={providerForm.label}
+                    onChange={(event) =>
+                      setProviderForm({ ...providerForm, label: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="field-label">
+                  {text('协议', 'Protocol')}
+                  <select
+                    value={providerForm.protocol}
+                    onChange={(event) =>
+                      setProviderForm({
+                        ...providerForm,
+                        protocol: event.target.value as ProviderProfile['protocol'],
+                      })
+                    }
+                  >
+                    <option value="openai_chat">OpenAI Chat</option>
+                    <option value="openai_responses">OpenAI Responses</option>
+                    <option value="openai_images">OpenAI Images</option>
+                    <option value="http_video_jobs">HTTP Video Jobs</option>
+                    <option value="custom">Custom Chat-compatible</option>
+                  </select>
+                </label>
+                <label className="field-label">
+                  Model
+                  <input
+                    value={providerForm.model}
+                    onChange={(event) =>
+                      setProviderForm({ ...providerForm, model: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="field-label full">
+                  Base URL
+                  <input
+                    value={providerForm.baseUrl}
+                    onChange={(event) =>
+                      setProviderForm({ ...providerForm, baseUrl: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="field-label full">
+                  API Key
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={providerForm.apiKey}
+                    onChange={(event) =>
+                      setProviderForm({ ...providerForm, apiKey: event.target.value })
+                    }
+                  />
+                </label>
               </div>
-            )}
-            {error && <div className="error-banner">{error}</div>}
-            <div className="modal-actions">
-              <button className="secondary" onClick={() => setShowSettings(false)}>
-                {t('close')}
-              </button>
               <button
-                className="primary"
-                disabled={
-                  busy ||
-                  !providerForm.model ||
-                  (!providerForm.apiKey &&
-                    !providers.some((item) => item.id === providerForm.id && item.hasSecret))
-                }
+                className="primary-button"
+                disabled={busy || !providerForm.model || !providerForm.apiKey}
                 onClick={saveProvider}
               >
-                Save provider
+                {text('保存 Provider', 'Save provider')}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ResourceInspector({
+  selection,
+  locale,
+  onSelectTake,
+}: {
+  selection: ResourceSelection;
+  locale: UiLocale;
+  onSelectTake: (take: TakeRecord) => void;
+}): React.JSX.Element {
+  const text = (zh: string, en: string): string => (locale === 'zh-CN' ? zh : en);
+  if (selection.kind === 'take') {
+    const take = selection.item;
+    const url = artifactUrl(take.artifact.objectUri);
+    return (
+      <section className="inspector-card media-inspector">
+        <div className="inspector-media">
+          {url && take.artifact.mimeType.startsWith('image/') ? (
+            <img src={url} alt="" />
+          ) : url ? (
+            <video src={url} controls />
+          ) : null}
+        </div>
+        <div className="inspector-title">
+          <div>
+            <span className="section-kicker">TAKE</span>
+            <h3>{take.shotId}</h3>
+          </div>
+          <span>{formatBytes(take.artifact.byteSize)}</span>
+        </div>
+        <div className="metadata-grid">
+          <span>
+            MIME<strong>{take.artifact.mimeType}</strong>
+          </span>
+          <span>
+            Provider
+            <strong>
+              {typeof take.provider.providerId === 'string' ? take.provider.providerId : 'unknown'}
+            </strong>
+          </span>
+        </div>
+        <button className="primary-button compact" onClick={() => onSelectTake(take)}>
+          <Check size={14} /> {text('选为当前 Take', 'Select this Take')}
+        </button>
+      </section>
+    );
+  }
+  if (selection.kind === 'render') {
+    const render = selection.item;
+    return (
+      <section className="inspector-card media-inspector">
+        <div className="inspector-media">
+          <video src={artifactUrl(render.objectUri)} controls />
+        </div>
+        <div className="inspector-title">
+          <div>
+            <span className="section-kicker">CURRENT CUT</span>
+            <h3>{text('时间线成片', 'Timeline render')}</h3>
+          </div>
+          <span>{(render.durationUs / 1_000_000).toFixed(1)}s</span>
+        </div>
+        <code>{render.sourceRevisionId}</code>
+      </section>
+    );
+  }
+  if (selection.kind === 'shot') {
+    const shot = selection.item;
+    return (
+      <section className="inspector-card">
+        <span className="section-kicker">SHOT</span>
+        <h3>{shot.id}</h3>
+        <p>
+          {shot.camera.framing || text('尚未设置景别', 'No framing yet')} ·{' '}
+          {shot.camera.movement || text('静止机位', 'Static camera')}
+        </p>
+        <div className="metadata-grid">
+          <span>
+            {text('时长', 'Duration')}
+            <strong>{(shot.duration_us / 1_000_000).toFixed(1)}s</strong>
+          </span>
+          <span>
+            {text('选中 Take', 'Selected Take')}
+            <strong>{shot.selected_take ?? '—'}</strong>
+          </span>
+        </div>
+      </section>
+    );
+  }
+  if (selection.kind === 'scene')
+    return (
+      <section className="inspector-card">
+        <span className="section-kicker">SCENE {selection.item.order + 1}</span>
+        <h3>{selection.item.title}</h3>
+        <p>{selection.item.story_goal || text('尚未设置场景目标', 'No story goal yet')}</p>
+        <small>
+          {selection.item.shots.length} {text('个镜头', 'shots')}
+        </small>
+      </section>
+    );
+  if (selection.kind === 'character')
+    return (
+      <section className="inspector-card">
+        <span className="section-kicker">CHARACTER</span>
+        <h3>{selection.item.name}</h3>
+        <p>
+          {selection.item.identity.appearance || text('尚未定义外观', 'Appearance not defined')}
+        </p>
+      </section>
+    );
+  if (selection.kind === 'story')
+    return (
+      <section className="inspector-card">
+        <span className="section-kicker">STORY</span>
+        <h3>{selection.item.brief.title}</h3>
+        <p>
+          {selection.item.brief.premise ||
+            text('通过对话建立故事前提', 'Use the conversation to define the premise')}
+        </p>
+        <div className="tag-list">
+          {selection.item.bible.themes.map((theme) => (
+            <span key={theme}>{theme}</span>
+          ))}
+        </div>
+      </section>
+    );
+  if (selection.kind === 'doctor')
+    return (
+      <section className={`inspector-card doctor-card ${selection.item.status}`}>
+        <span className="section-kicker">PROJECT DOCTOR</span>
+        <h3>{selection.item.status}</h3>
+        <p>
+          {selection.item.checks} {text('项检查', 'checks')} · {selection.item.issues.length}{' '}
+          {text('个问题', 'issues')}
+        </p>
+        {selection.item.issues.map((issue) => (
+          <div className="doctor-issue" key={`${issue.code}-${issue.path ?? ''}`}>
+            <CircleAlert size={13} />
+            <span>
+              <strong>{issue.code}</strong>
+              {issue.message}
+            </span>
+          </div>
+        ))}
+      </section>
+    );
+  if (selection.kind === 'project')
+    return (
+      <section className="inspector-card">
+        <span className="section-kicker">PROJECT</span>
+        <h3>{selection.item.title}</h3>
+        <p>{selection.item.root}</p>
+        <div className="metadata-grid">
+          <span>
+            {text('画幅', 'Frame')}
+            <strong>
+              {selection.item.delivery.width} × {selection.item.delivery.height}
+            </strong>
+          </span>
+          <span>
+            {text('帧率', 'Frame rate')}
+            <strong>
+              {selection.item.delivery.frameRate.numerator /
+                selection.item.delivery.frameRate.denominator}{' '}
+              fps
+            </strong>
+          </span>
+        </div>
+      </section>
+    );
+  return (
+    <section className="inspector-card">
+      <span className="section-kicker">REVISION</span>
+      <h3>{selection.item.message}</h3>
+    </section>
   );
 }

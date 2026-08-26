@@ -3,7 +3,7 @@ OpenMovie FFmpeg Sidecar
 
 OpenMovie source releases do not contain FFmpeg binaries. Official Windows and macOS installers
 bundle FFmpeg and FFprobe as separate command-line programs under this directory. OpenMovie invokes
-them through a process boundary and remains licensed under 0BSD.
+them through a process boundary and remains licensed under MIT.
 
 macOS builds use FFmpeg 9.0.1 source from:
 https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz

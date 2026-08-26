@@ -29,7 +29,7 @@ FFmpeg/FFprobe pair fails the release.
 
 macOS builds compile pinned FFmpeg source with LGPL configuration and reject `--enable-gpl`.
 Windows downloads a pinned BtbN LGPL archive and verifies SHA-256. Both builds confirm the MPEG-4
-fallback encoder before packaging. The repository stays 0BSD; Sidecars remain separately licensed
+fallback encoder before packaging. The repository stays MIT; Sidecars remain separately licensed
 LGPL executables with bundled notices.
 
 Never publish by weakening the signing gate, replacing a pinned checksum without reviewing the

@@ -34,7 +34,7 @@ const sbom = {
       name: 'openmovie',
       version,
       purl: applicationPurl,
-      licenses: [{ license: { id: '0BSD' } }],
+      licenses: [{ license: { id: 'MIT' } }],
     },
     properties: [
       { name: 'openmovie:packageManager', value: String(packageMetadata.packageManager ?? '') },

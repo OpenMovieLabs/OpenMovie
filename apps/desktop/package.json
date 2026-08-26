@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "author": "OpenMovie Labs",
-  "license": "0BSD",
+  "license": "MIT",
   "packageManager": "pnpm@11.23.0",
   "description": "OpenMovie desktop workbench",
   "type": "module",

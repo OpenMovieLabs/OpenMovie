@@ -10,16 +10,16 @@ OpenMovie 把电影理解为一个可检查的工程：YAML Movie IR 是源文�
 
 1. 安装对应平台的签名版本并启动 OpenMovie。
 2. 点击“新建电影 / New movie”，输入片名并选择工程目录。
-3. 在 Story 填写 premise、主题、世界观和规则。
-4. 创建 Scene，再在 Scene 下创建 Shot；每个 Shot 有时长、景别和运镜等结构化意图。
-5. 点击“给 OpenMovie 一个任务”，选择规划模型、目标 Shot、图片或视频输出以及生成 Provider。
-6. 查看 Task 进度和 Take。选择 Take 会创建一个新的 Revision，而不是覆盖历史。
+3. 在中央对话框用一句话描述电影、角色或第一个场景；不需要先配置复杂工作流。
+4. 左侧工程树会组织 Story、Character、Scene、Shot 和 Timeline，点击对象即可把它作为当前上下文。
+5. 中央对话连续显示 Task 进度、远程调用审批和可审查的工程修改提案。
+6. 右侧资源区展示 Shot、生成的 Take、Current Cut 和版本历史。选择 Take 会创建一个新的 Revision，而不是覆盖历史。
 
 内置 Fake Provider 免费、离线、确定性，适合先走通工作流。它不会生成真实创意媒体。
 
 ## 3. 配置模型和 API
 
-打开右上角设置。Provider Profile 包含名称、协议、Base URL、模型和 API Key：
+打开左下角设置。Provider Profile 包含名称、协议、Base URL、模型和 API Key：
 
 | 协议                      | 用途                                   |
 | ------------------------- | -------------------------------------- |
@@ -52,7 +52,7 @@ OpenMovie 会探测本机 Codex 与 Claude Code：
 - Direct Agent 使用已配置的 API Provider；
 - 三者都只能产生 `OPENMOVIE_PLAN_V1` Proposal，不能直接提交 Movie IR。
 
-在 Overview 审查 Proposal 的字段级动作。只有点击“Accept as Revision”才会原子提交；Reject 不修改
+在中央对话中审查 Proposal 的字段级动作。只有点击“应用到工程”才会原子提交；拒绝不会修改
 工程。工程头发生变化时，旧 Proposal 会失效，必须重新生成。
 
 ## 5. Take、分析、反馈和成片
@@ -66,13 +66,13 @@ OpenMovie 会探测本机 Codex 与 Claude Code：
 
 ## 6. Revision、Branch 和外部编辑
 
-Overview 显示 Revision 历史、语义 Diff、Working Changes 和创作 Branch。Restore 会创建新的恢复
+右侧“版本”页显示 Revision 历史与创作 Branch。Restore 会创建新的恢复
 Revision，不会抹掉历史。外部编辑受支持的 YAML 会显示为 Working Changes；冲突写入通过
 `expectedRevisionId` 拒绝，不会静默覆盖。
 
 ## 7. 工程体检、磁盘和备份
 
-- Tests → Project Doctor 检查 Schema、引用、选中 Take、SQLite、Object Store 和 Working Changes；
+- 左侧“工程检查”运行 Project Doctor，检查 Schema、引用、选中 Take、SQLite、Object Store 和 Working Changes；
   Deep 模式会重新计算媒体哈希。
 - Overview 的存储卡片区分媒体对象、源文件、运行数据库和可重建 Cache。清理按钮只删除 Cache、
   Preview 和 Temp，不删除 Object Store、Revision 或 Movie IR。
