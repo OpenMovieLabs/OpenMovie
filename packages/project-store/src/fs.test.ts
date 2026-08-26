@@ -24,7 +24,9 @@ describe('project filesystem helpers', () => {
     const target = join(root, 'nested', 'document.yaml');
     await writeFileAtomic(target, 'first');
     expect(await readFile(target, 'utf8')).toBe('first');
-    expect((await stat(target)).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect((await stat(target)).mode & 0o777).toBe(0o600);
+    }
 
     await writeFileAtomic(target, Uint8Array.from(Buffer.from('second')));
     expect(await readFile(target, 'utf8')).toBe('second');
