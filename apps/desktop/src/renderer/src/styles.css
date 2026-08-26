@@ -1547,6 +1547,123 @@ textarea:focus-visible {
   width: 21px;
 }
 
+.preview-placeholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 14px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--faint);
+  background: linear-gradient(135deg, rgb(214 247 94 / 5%), transparent 52%), #202222;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.storyboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.storyboard-card {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  color: var(--muted);
+  background: #171818;
+  text-align: left;
+}
+
+.storyboard-card:hover,
+.storyboard-card.selected {
+  color: var(--text);
+  border-color: #4b5045;
+  background: #1d1f1e;
+}
+
+.storyboard-card.selected {
+  box-shadow: inset 0 0 0 1px rgb(214 247 94 / 16%);
+}
+
+.storyboard-preview {
+  position: relative;
+  display: grid;
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  overflow: hidden;
+  background: #202222;
+}
+
+.storyboard-preview img,
+.storyboard-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shot-index,
+.take-state {
+  position: absolute;
+  top: 7px;
+  padding: 3px 6px;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 5px;
+  color: #f0f1ed;
+  background: rgb(8 9 9 / 82%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+}
+
+.shot-index {
+  left: 7px;
+  color: var(--accent);
+}
+
+.take-state {
+  right: 7px;
+}
+
+.storyboard-copy {
+  padding: 10px;
+}
+
+.storyboard-copy strong,
+.storyboard-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storyboard-copy strong {
+  min-height: 2.7em;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.storyboard-copy small {
+  margin-top: 6px;
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.shot-inspector-media {
+  margin: 12px 0;
+}
+
 .media-card > div:last-child,
 .shot-card {
   padding: 9px;

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
 
 export type ProviderCapability =
   | 'text.generate'
@@ -168,12 +169,80 @@ export class ProviderGateway {
   }
 }
 
-const fixturePng = Uint8Array.from(
-  Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-    'base64',
-  ),
-);
+function pngCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Buffer {
+  const name = Buffer.from(type, 'ascii');
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.byteLength);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(pngCrc32(Buffer.concat([name, data])));
+  return Buffer.concat([length, name, data, crc]);
+}
+
+/** A visible deterministic slate used only by the built-in demo provider. */
+function createFixturePng(
+  requestedWidth: number,
+  requestedHeight: number,
+  prompt: string,
+): Uint8Array {
+  const width = Math.min(2048, Math.max(1, Math.round(requestedWidth)));
+  const height = Math.min(2048, Math.max(1, Math.round(requestedHeight)));
+  const promptTint = createHash('sha256').update(prompt).digest()[0] ?? 0;
+  const scanline = width * 3 + 1;
+  const raw = Buffer.alloc(scanline * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * scanline;
+    raw[row] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const offset = row + 1 + x * 3;
+      const frame =
+        x < Math.max(1, width / 80) ||
+        x >= width - Math.max(1, width / 80) ||
+        y < Math.max(1, height / 80) ||
+        y >= height - Math.max(1, height / 80);
+      const guide =
+        Math.abs(x - width / 3) < Math.max(1, width / 300) ||
+        Math.abs(x - (width * 2) / 3) < Math.max(1, width / 300) ||
+        Math.abs(y - height / 3) < Math.max(1, height / 300) ||
+        Math.abs(y - (height * 2) / 3) < Math.max(1, height / 300);
+      const flare = Math.abs(y - height * (0.28 + (promptTint % 20) / 100)) < height / 18;
+      if (frame || guide) {
+        raw[offset] = 207;
+        raw[offset + 1] = 247;
+        raw[offset + 2] = 78;
+      } else if (flare) {
+        raw[offset] = 48 + Math.floor((x / width) * 48);
+        raw[offset + 1] = 92 + Math.floor((x / width) * 70);
+        raw[offset + 2] = 105 + (promptTint % 42);
+      } else {
+        raw[offset] = 17 + Math.floor((x / width) * 22);
+        raw[offset + 1] = 20 + Math.floor((y / height) * 28);
+        raw[offset + 2] = 24 + Math.floor(((x + y) / (width + height)) * 35);
+      }
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw, { level: 9 })),
+    pngChunk('IEND', new Uint8Array()),
+  ]);
+}
 
 export class FakeProvider implements ModelProvider {
   readonly id = 'fake';
@@ -206,7 +275,7 @@ export class FakeProvider implements ModelProvider {
   generateImage(request: GenerateImageRequest): Promise<GenerateImageResult> {
     if (request.signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     return Promise.resolve({
-      bytes: fixturePng,
+      bytes: createFixturePng(request.width, request.height, request.prompt),
       mimeType: 'image/png',
       model: request.model,
       ...(request.seed === undefined ? {} : { seed: request.seed }),

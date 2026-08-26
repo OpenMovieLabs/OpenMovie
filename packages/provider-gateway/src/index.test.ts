@@ -32,6 +32,15 @@ describe('ProviderGateway', () => {
     });
     expect(image.mimeType).toBe('image/png');
     expect(image.bytes.byteLength).toBeGreaterThan(20);
+    const storyboard = await fake.generateImage({
+      model: 'fake-image',
+      prompt: 'A visible storyboard frame',
+      width: 320,
+      height: 180,
+    });
+    expect(storyboard.bytes.byteLength).toBeGreaterThan(1_000);
+    expect(Buffer.from(storyboard.bytes).readUInt32BE(16)).toBe(320);
+    expect(Buffer.from(storyboard.bytes).readUInt32BE(20)).toBe(180);
     expect(
       await fake.transcribeAudio({
         model: 'fake-transcription',

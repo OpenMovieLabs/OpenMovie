@@ -83,3 +83,15 @@ export function projectResourceCount(input: {
     input.renderCount
   );
 }
+
+export function storyboardTakeForShot(shot: Shot, takes: TakeRecord[]): TakeRecord | undefined {
+  const candidates = takes
+    .filter(
+      (take) =>
+        take.shotId === shot.id &&
+        (take.artifact.mimeType.startsWith('image/') ||
+          take.artifact.mimeType.startsWith('video/')),
+    )
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  return candidates.find((take) => take.id === shot.selected_take) ?? candidates[0];
+}

@@ -52,6 +52,7 @@ import { ensureActiveProject, reconcileRecentProjects } from './project-list.js'
 import {
   projectResourceCount,
   reconcileResourceSelection,
+  storyboardTakeForShot,
   storyHasContent,
   type ResourceSelection,
 } from './resource-selection.js';
@@ -84,6 +85,51 @@ function formatBytes(bytes: number): string {
 function takeLabel(take: TakeRecord): string {
   const prompt = take.generation.prompt;
   return typeof prompt === 'string' && prompt.trim() ? prompt.trim() : take.shotId;
+}
+
+function ArtifactPreview({
+  take,
+  emptyLabel,
+  legacyLabel,
+  controls = false,
+}: {
+  take?: TakeRecord | undefined;
+  emptyLabel: string;
+  legacyLabel: string;
+  controls?: boolean;
+}): React.JSX.Element {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [take?.id]);
+  const url = take ? artifactUrl(take.artifact.objectUri) : undefined;
+  const isLegacyDemoPlaceholder =
+    take?.provider.providerId === 'fake' && take.artifact.byteSize <= 100;
+  if (!take || !url || failed || isLegacyDemoPlaceholder) {
+    return (
+      <span className="preview-placeholder">
+        <ImageIcon size={20} />
+        {isLegacyDemoPlaceholder ? legacyLabel : emptyLabel}
+      </span>
+    );
+  }
+  if (take.artifact.mimeType.startsWith('image/')) {
+    return <img src={url} alt={takeLabel(take)} onError={() => setFailed(true)} />;
+  }
+  if (take.artifact.mimeType.startsWith('video/')) {
+    return (
+      <video
+        src={url}
+        muted
+        controls={controls}
+        preload="metadata"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <span className="preview-placeholder">
+      <Film size={20} /> {emptyLabel}
+    </span>
+  );
 }
 
 function taskStatusText(status: Task['status'], locale: UiLocale): string {
@@ -1214,6 +1260,8 @@ export function App(): React.JSX.Element {
             {selection && (
               <ResourceInspector
                 selection={selection}
+                shots={shots}
+                takes={takes}
                 locale={uiLocale}
                 onSelectTake={selectTake}
               />
@@ -1329,7 +1377,6 @@ export function App(): React.JSX.Element {
                 </div>
                 <div className="media-grid">
                   {filteredTakes.map((take) => {
-                    const url = artifactUrl(take.artifact.objectUri);
                     return (
                       <button
                         key={take.id}
@@ -1337,13 +1384,14 @@ export function App(): React.JSX.Element {
                         onClick={() => setSelection({ kind: 'take', item: take })}
                       >
                         <div className="media-preview">
-                          {url && take.artifact.mimeType.startsWith('image/') ? (
-                            <img src={url} alt="" />
-                          ) : url && take.artifact.mimeType.startsWith('video/') ? (
-                            <video src={url} muted />
-                          ) : (
-                            <Film size={21} />
-                          )}
+                          <ArtifactPreview
+                            take={take}
+                            emptyLabel={text('预览不可用', 'Preview unavailable')}
+                            legacyLabel={text(
+                              '旧版演示占位图，请重新生成',
+                              'Legacy demo placeholder; generate again',
+                            )}
+                          />
                         </div>
                         <span title={takeLabel(take)}>{takeLabel(take)}</span>
                         <small>{formatBytes(take.artifact.byteSize)}</small>
@@ -1370,30 +1418,54 @@ export function App(): React.JSX.Element {
             {shots.length > 0 && (
               <section className="resource-section">
                 <div className="section-title">
-                  <span>{text('镜头', 'SHOTS')}</span>
+                  <span>{text('分镜故事板', 'STORYBOARD')}</span>
                   <small>{shots.length}</small>
                 </div>
-                <div className="shot-grid">
-                  {filteredShots.map((shot, index) => (
-                    <button
-                      key={shot.id}
-                      className={
-                        selection?.kind === 'shot' && selection.item.id === shot.id
-                          ? 'shot-card selected'
-                          : 'shot-card'
-                      }
-                      onClick={() => setSelection({ kind: 'shot', item: shot })}
-                    >
-                      <div className="shot-number">{String(index + 1).padStart(2, '0')}</div>
-                      <div>
-                        <strong>{shot.camera.framing || text('未设置景别', 'No framing')}</strong>
-                        <small>
-                          {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
-                          {takes.filter((take) => take.shotId === shot.id).length} Takes
-                        </small>
-                      </div>
-                    </button>
-                  ))}
+                <div className="storyboard-grid">
+                  {filteredShots.map((shot, index) => {
+                    const shotTakes = takes.filter((take) => take.shotId === shot.id);
+                    const storyboardTake = storyboardTakeForShot(shot, shotTakes);
+                    return (
+                      <button
+                        key={shot.id}
+                        className={
+                          selection?.kind === 'shot' && selection.item.id === shot.id
+                            ? 'storyboard-card selected'
+                            : 'storyboard-card'
+                        }
+                        onClick={() => setSelection({ kind: 'shot', item: shot })}
+                      >
+                        <div className="storyboard-preview">
+                          <ArtifactPreview
+                            take={storyboardTake}
+                            emptyLabel={text('尚未生成分镜图', 'No storyboard image yet')}
+                            legacyLabel={text(
+                              '旧版演示占位图，请重新生成',
+                              'Legacy demo placeholder; generate again',
+                            )}
+                          />
+                          <span className="shot-index">{String(index + 1).padStart(2, '0')}</span>
+                          {storyboardTake && (
+                            <span className="take-state">
+                              {storyboardTake.id === shot.selected_take
+                                ? text('当前 Take', 'Current Take')
+                                : text('最新 Take', 'Latest Take')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="storyboard-copy">
+                          <strong>
+                            {shot.visual_description ||
+                              shot.camera.framing ||
+                              text('未设置画面描述', 'No visual description')}
+                          </strong>
+                          <small>
+                            {(shot.duration_us / 1_000_000).toFixed(1)}s · {shotTakes.length} Takes
+                          </small>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -1657,25 +1729,35 @@ export function App(): React.JSX.Element {
 
 function ResourceInspector({
   selection,
+  shots,
+  takes,
   locale,
   onSelectTake,
 }: {
   selection: ResourceSelection;
+  shots: Shot[];
+  takes: TakeRecord[];
   locale: UiLocale;
   onSelectTake: (take: TakeRecord) => void;
 }): React.JSX.Element {
   const text = (zh: string, en: string): string => (locale === 'zh-CN' ? zh : en);
   if (selection.kind === 'take') {
     const take = selection.item;
-    const url = artifactUrl(take.artifact.objectUri);
+    const isCurrentTake = shots.some(
+      (shot) => shot.id === take.shotId && shot.selected_take === take.id,
+    );
     return (
       <section className="inspector-card media-inspector">
         <div className="inspector-media">
-          {url && take.artifact.mimeType.startsWith('image/') ? (
-            <img src={url} alt="" />
-          ) : url ? (
-            <video src={url} controls />
-          ) : null}
+          <ArtifactPreview
+            take={take}
+            emptyLabel={text('预览不可用', 'Preview unavailable')}
+            legacyLabel={text(
+              '旧版演示占位图，请重新生成',
+              'Legacy demo placeholder; generate again',
+            )}
+            controls
+          />
         </div>
         <div className="inspector-title">
           <div>
@@ -1695,8 +1777,15 @@ function ResourceInspector({
             </strong>
           </span>
         </div>
-        <button className="primary-button compact" onClick={() => onSelectTake(take)}>
-          <Check size={14} /> {text('选为当前 Take', 'Select this Take')}
+        <button
+          className="primary-button compact"
+          disabled={isCurrentTake}
+          onClick={() => onSelectTake(take)}
+        >
+          <Check size={14} />
+          {isCurrentTake
+            ? text('已是当前 Take', 'Current Take')
+            : text('选为当前 Take', 'Select this Take')}
         </button>
       </section>
     );
@@ -1721,10 +1810,21 @@ function ResourceInspector({
   }
   if (selection.kind === 'shot') {
     const shot = selection.item;
+    const storyboardTake = storyboardTakeForShot(shot, takes);
     return (
       <section className="inspector-card">
         <span className="section-kicker">SHOT</span>
         <h3>{shot.id}</h3>
+        <div className="inspector-media shot-inspector-media">
+          <ArtifactPreview
+            take={storyboardTake}
+            emptyLabel={text('尚未生成分镜图', 'No storyboard image yet')}
+            legacyLabel={text(
+              '旧版演示占位图，请重新生成',
+              'Legacy demo placeholder; generate again',
+            )}
+          />
+        </div>
         <p>
           {shot.visual_description ||
             shot.action ||

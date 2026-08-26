@@ -5,6 +5,7 @@ import type { StoryDocuments } from '../../preload/index.js';
 import {
   projectResourceCount,
   reconcileResourceSelection,
+  storyboardTakeForShot,
   storyHasContent,
 } from './resource-selection.js';
 
@@ -55,5 +56,37 @@ describe('desktop resource state', () => {
         renderCount: 0,
       }),
     ).toBe(8);
+  });
+
+  it('uses the selected Take for a storyboard and otherwise falls back to the newest media Take', () => {
+    const selectedShot = { id: 'shot_demo', selected_take: 'take_old' } as never;
+    const takes = [
+      {
+        id: 'take_old',
+        shotId: 'shot_demo',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        artifact: { mimeType: 'image/png' },
+      },
+      {
+        id: 'take_new',
+        shotId: 'shot_demo',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        artifact: { mimeType: 'image/png' },
+      },
+    ] as never;
+    expect(storyboardTakeForShot(selectedShot, takes)?.id).toBe('take_old');
+    expect(
+      storyboardTakeForShot({ id: 'shot_demo', selected_take: null } as never, takes)?.id,
+    ).toBe('take_new');
+    expect(
+      storyboardTakeForShot(selectedShot, [
+        {
+          id: 'take_audio',
+          shotId: 'shot_demo',
+          createdAt: '2026-01-03T00:00:00.000Z',
+          artifact: { mimeType: 'audio/wav' },
+        },
+      ] as never),
+    ).toBeUndefined();
   });
 });
