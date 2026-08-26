@@ -1032,8 +1032,15 @@ export function App(): React.JSX.Element {
 
       <aside className="resource-pane">
         <header className="resource-header">
-          <div className="resource-tabs">
+          <div
+            className="resource-tabs"
+            role="tablist"
+            aria-label={text('资源视图', 'Resource views')}
+          >
             <button
+              type="button"
+              role="tab"
+              aria-selected={resourceView === 'resources'}
               className={resourceView === 'resources' ? 'active' : ''}
               onClick={() => {
                 setResourceView('resources');
@@ -1042,13 +1049,22 @@ export function App(): React.JSX.Element {
                 }
               }}
             >
-              <PanelRight size={14} /> {text('资源', 'Resources')}
+              <span className="resource-tab-icon" aria-hidden="true">
+                <PanelRight size={14} />
+              </span>
+              <span>{text('资源', 'Resources')}</span>
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={resourceView === 'versions'}
               className={resourceView === 'versions' ? 'active' : ''}
               onClick={() => setResourceView('versions')}
             >
-              <History size={14} /> {text('版本', 'Versions')}
+              <span className="resource-tab-icon" aria-hidden="true">
+                <History size={14} />
+              </span>
+              <span>{text('版本', 'Versions')}</span>
             </button>
           </div>
           {project && (

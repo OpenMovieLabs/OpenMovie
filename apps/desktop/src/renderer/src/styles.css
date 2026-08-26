@@ -1103,17 +1103,39 @@ textarea:focus-visible {
 
 .resource-tabs {
   display: flex;
+  flex: 0 0 auto;
   align-self: stretch;
   gap: 3px;
 }
 
 .resource-tabs button {
+  display: inline-flex;
   position: relative;
+  min-width: 58px;
   padding: 0 9px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   color: var(--faint);
   background: transparent;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.resource-tab-icon {
+  display: grid;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+}
+
+.resource-tab-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 
 .resource-tabs button:hover,
@@ -1133,6 +1155,8 @@ textarea:focus-visible {
 }
 
 .resource-count {
+  flex: 0 0 auto;
+  margin-left: auto;
   padding: 3px 6px;
   border: 1px solid var(--border);
   border-radius: 999px;
