@@ -37,6 +37,7 @@ import electronUpdater from 'electron-updater';
 
 import { CoreClient } from './core-client.js';
 import { resolvePackagedMediaSidecar } from './media-sidecar.js';
+import { ProjectSessionManager, type ProjectCoreClient } from './project-session-manager.js';
 import { probeProvider } from './provider-probe.js';
 import { EncryptedSecretStore } from './secret-store.js';
 import { DesktopUpdateManager } from './update-manager.js';
@@ -44,6 +45,8 @@ import { DesktopUpdateManager } from './update-manager.js';
 const { autoUpdater } = electronUpdater;
 
 let core: CoreClient | undefined;
+let serviceCore: CoreClient | undefined;
+let projectSessions: ProjectSessionManager | undefined;
 let secrets: EncryptedSecretStore | undefined;
 let activeProjectRoot: string | undefined;
 
@@ -137,8 +140,9 @@ function createWindow(): BrowserWindow {
 void app
   .whenReady()
   .then(async () => {
-    core = new CoreClient(coreEntry(), mediaSidecarEnvironment());
-    await core.start();
+    serviceCore = new CoreClient(coreEntry(), mediaSidecarEnvironment());
+    core = serviceCore;
+    await serviceCore.start();
     protocol.handle('openmovie-artifact', (request) => {
       if (!activeProjectRoot) return new Response('No project is open', { status: 404 });
       const url = new URL(request.url);
@@ -175,9 +179,9 @@ void app
       currentVersion: app.getVersion(),
     });
 
-    const initialize = async () =>
+    const initializeClient = async (client: ProjectCoreClient) =>
       initializeResultSchema.parse(
-        await core?.request({
+        await client.request({
           method: 'initialize',
           params: {
             protocolVersion: PROTOCOL_VERSION,
@@ -189,10 +193,14 @@ void app
           },
         }),
       );
+    const initialize = async () => {
+      if (!serviceCore) throw new Error('OpenMovie Core is unavailable');
+      return initializeClient(serviceCore);
+    };
 
     ipcMain.handle('openmovie:initialize', initialize);
     ipcMain.handle('openmovie:core-health', async () =>
-      coreHealthSchema.parse(await core?.request({ method: 'core.health', params: {} })),
+      coreHealthSchema.parse(await serviceCore?.request({ method: 'core.health', params: {} })),
     );
     ipcMain.handle('openmovie:update-status', () => updates.getState());
     ipcMain.handle('openmovie:update-check', () => updates.check());
@@ -203,7 +211,7 @@ void app
     ipcMain.handle('openmovie:harness-list', async () =>
       harnessHealthSchema
         .array()
-        .parse(await core?.request({ method: 'harness.list', params: {} })),
+        .parse(await serviceCore?.request({ method: 'harness.list', params: {} })),
     );
 
     if (updates.getState().status !== 'disabled' && !process.env.OPENMOVIE_SMOKE_TEST) {
@@ -222,12 +230,10 @@ void app
         properties: ['createDirectory', 'showOverwriteConfirmation'],
       });
       if (selection.canceled || !selection.filePath) return null;
-      const created = projectSummarySchema.parse(
-        await core?.request({
-          method: 'project.create',
-          params: { path: selection.filePath, title: title.trim() },
-        }),
-      );
+      if (!projectSessions) throw new Error('Project sessions are unavailable');
+      const session = await projectSessions.create(selection.filePath, title.trim());
+      core = session.client as CoreClient;
+      const created = projectSummarySchema.parse(session.result);
       activeProjectRoot = created.root;
       secrets?.rememberProject(created.root, created.title);
       return created;
@@ -239,9 +245,10 @@ void app
       });
       const path = selection.filePaths[0];
       if (selection.canceled || !path) return null;
-      const opened = projectSummarySchema.parse(
-        await core?.request({ method: 'project.open', params: { path, takeoverStaleLock: false } }),
-      );
+      if (!projectSessions) throw new Error('Project sessions are unavailable');
+      const session = await projectSessions.open(path, false);
+      core = session.client as CoreClient;
+      const opened = projectSummarySchema.parse(session.result);
       activeProjectRoot = opened.root;
       secrets?.rememberProject(opened.root, opened.title);
       return opened;
@@ -252,13 +259,13 @@ void app
       if (!secrets?.listRecentProjects().some((item) => item.path === path)) {
         throw new Error('Project is not in Recent Projects');
       }
-      const openRecentProject = async (takeoverStaleLock: boolean) =>
-        projectSummarySchema.parse(
-          await core?.request({
-            method: 'project.open',
-            params: { path, takeoverStaleLock },
-          }),
-        );
+      const sessions = projectSessions;
+      if (!sessions) throw new Error('Project sessions are unavailable');
+      const openRecentProject = async (takeoverStaleLock: boolean) => {
+        const session = await sessions.open(path, takeoverStaleLock);
+        core = session.client as CoreClient;
+        return projectSummarySchema.parse(session.result);
+      };
       let opened: ProjectSummary;
       try {
         opened = await openRecentProject(false);
@@ -285,7 +292,6 @@ void app
         opened = await openRecentProject(true);
       }
       activeProjectRoot = opened.root;
-      secrets.rememberProject(opened.root, opened.title);
       return opened;
     });
     ipcMain.handle('openmovie:project-summary', async () =>
@@ -1031,6 +1037,10 @@ void app
     });
 
     await initialize();
+    projectSessions = new ProjectSessionManager(
+      () => new CoreClient(coreEntry(), mediaSidecarEnvironment()),
+      initializeClient,
+    );
     if (process.env.OPENMOVIE_SMOKE_TEST === '1') {
       const smokeHealth = coreHealthSchema.parse(
         await core.request({ method: 'core.health', params: {} }),
@@ -1202,5 +1212,9 @@ app.on('before-quit', () => {
   activeProjectRoot = undefined;
   secrets?.close();
   secrets = undefined;
-  core?.stop();
+  projectSessions?.stopAll();
+  projectSessions = undefined;
+  serviceCore?.stop();
+  serviceCore = undefined;
+  core = undefined;
 });

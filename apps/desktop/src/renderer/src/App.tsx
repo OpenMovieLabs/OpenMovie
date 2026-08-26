@@ -535,10 +535,9 @@ export function App(): React.JSX.Element {
   const filteredTakes = takes.filter((take) =>
     `${take.id} ${take.shotId} ${takeLabel(take)}`.toLowerCase().includes(query),
   );
-  const hasActiveTasks = tasks.some((task) => activeTaskStatuses.has(task.status));
   const hasProjectResources = shots.length > 0 || takes.length > 0 || renders.length > 0;
   const hasSelectedTake = shots.some((shot) => Boolean(shot.selected_take));
-  const projectNavigationLocked = busy || hasActiveTasks;
+  const projectNavigationLocked = busy;
   const sidebarProjects = ensureActiveProject(recentProjects, project);
 
   return (
@@ -558,7 +557,7 @@ export function App(): React.JSX.Element {
           disabled={projectNavigationLocked}
           title={
             projectNavigationLocked
-              ? text('请先等待当前任务结束或停止任务', 'Wait for or stop the current task first')
+              ? text('请等待当前操作完成', 'Wait for the current operation to finish')
               : undefined
           }
           onClick={() => setShowCreate(true)}
@@ -581,10 +580,7 @@ export function App(): React.JSX.Element {
                   disabled={!isCurrent && projectNavigationLocked}
                   title={
                     !isCurrent && projectNavigationLocked
-                      ? text(
-                          '当前任务运行期间不能切换工程',
-                          'Projects cannot be switched while a task is running',
-                        )
+                      ? text('请等待当前操作完成', 'Wait for the current operation to finish')
                       : sidebarProject.title
                   }
                   onClick={() => {
@@ -718,7 +714,7 @@ export function App(): React.JSX.Element {
             disabled={projectNavigationLocked}
             title={
               projectNavigationLocked
-                ? text('请先等待当前任务结束或停止任务', 'Wait for or stop the current task first')
+                ? text('请等待当前操作完成', 'Wait for the current operation to finish')
                 : undefined
             }
             onClick={openProject}
