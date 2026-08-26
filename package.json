@@ -21,6 +21,7 @@
     "perf:baseline": "node --import tsx scripts/performance-baseline.ts",
     "cli": "pnpm --filter @openmovie/cli dev --",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "smoke:desktop": "node scripts/smoke-desktop.mjs",
     "sbom": "node scripts/generate-sbom.mjs",

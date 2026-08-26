@@ -33,9 +33,16 @@ export class CodexAppServerAdapter {
   private readonly listeners = new Set<(event: AgentEvent) => void>();
   private readonly dynamicToolHandlers = new Map<string, DynamicToolHandler>();
 
+  constructor(
+    private readonly command = 'codex',
+    private readonly argumentPrefix: string[] = [],
+  ) {}
+
   async detect(): Promise<HarnessHealth> {
     try {
-      const result = await execFileAsync('codex', ['--version'], { timeout: 5_000 });
+      const result = await execFileAsync(this.command, [...this.argumentPrefix, '--version'], {
+        timeout: 5_000,
+      });
       return { available: true, version: result.stdout.trim() };
     } catch (error) {
       return { available: false, error: error instanceof Error ? error.message : String(error) };
@@ -44,7 +51,7 @@ export class CodexAppServerAdapter {
 
   async start(): Promise<void> {
     if (this.child) return;
-    const child = spawn('codex', ['app-server', '--stdio'], {
+    const child = spawn(this.command, [...this.argumentPrefix, 'app-server', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env,
     });

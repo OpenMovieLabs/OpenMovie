@@ -1029,7 +1029,12 @@ export function App(): React.JSX.Element {
           <div className="resource-tabs">
             <button
               className={resourceView === 'resources' ? 'active' : ''}
-              onClick={() => setResourceView('resources')}
+              onClick={() => {
+                setResourceView('resources');
+                if (selection?.kind === 'revision') {
+                  setSelection(project ? { kind: 'project', item: project } : null);
+                }
+              }}
             >
               <PanelRight size={14} /> {text('资源', 'Resources')}
             </button>

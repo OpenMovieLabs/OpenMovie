@@ -39,12 +39,127 @@ describe('OpenMovie MCP Server', () => {
     expect(scenes).toHaveLength(1);
     const scene = scenes[0];
     if (!scene) throw new Error('Expected a Scene');
+    const afterScene = project.revisions.currentRevisionId();
+    if (!afterScene) throw new Error('Expected Scene Revision');
+    const shotCreated = await client.callTool({
+      name: 'shot_create',
+      arguments: {
+        sceneId: scene.id,
+        durationUs: 1_500_000,
+        framing: 'wide',
+        movement: 'slow push',
+        expectedRevisionId: afterScene,
+      },
+    });
+    expect(shotCreated.isError).not.toBe(true);
+    const shots = await client.callTool({ name: 'entity_list', arguments: { kind: 'shot' } });
+    expect(shots.structuredContent).toMatchObject({
+      entities: [expect.objectContaining({ type: 'shot' })],
+    });
+
+    const afterShot = project.revisions.currentRevisionId();
+    if (!afterShot) throw new Error('Expected Shot Revision');
+    expect(
+      (
+        await client.callTool({
+          name: 'story_update',
+          arguments: {
+            premise: 'An arrival changes the city.',
+            themes: ['change'],
+            world: 'A silent metropolis',
+            rules: ['Keep screen direction consistent'],
+            expectedRevisionId: afterShot,
+          },
+        })
+      ).isError,
+    ).not.toBe(true);
+    expect(
+      (await client.callTool({ name: 'story_get', arguments: {} })).structuredContent,
+    ).toMatchObject({ brief: { premise: 'An arrival changes the city.' } });
+
+    const afterStory = project.revisions.currentRevisionId();
+    if (!afterStory) throw new Error('Expected Story Revision');
+    expect(
+      (
+        await client.callTool({
+          name: 'timeline_assemble',
+          arguments: { expectedRevisionId: afterStory },
+        })
+      ).isError,
+    ).not.toBe(true);
+    expect(
+      (await client.callTool({ name: 'timeline_get', arguments: {} })).structuredContent,
+    ).toMatchObject({ revision: 1 });
+    expect(
+      (await client.callTool({ name: 'timeline_render_list', arguments: {} })).structuredContent,
+    ).toEqual({ renders: [] });
+
+    const currentRevisionId = project.revisions.currentRevisionId();
+    if (!currentRevisionId) throw new Error('Expected current Revision');
+    const revisionList = (
+      await client.callTool({ name: 'revision_list', arguments: { limit: 20 } })
+    ).structuredContent as { revisions: Array<{ id: string }> };
+    expect(revisionList.revisions.some((revision) => revision.id === currentRevisionId)).toBe(true);
+    expect(
+      (
+        await client.callTool({
+          name: 'revision_diff',
+          arguments: { revisionId: currentRevisionId },
+        })
+      ).structuredContent,
+    ).toHaveProperty('files');
+    expect(
+      (await client.callTool({ name: 'working_changes', arguments: {} })).structuredContent,
+    ).toEqual({
+      files: [],
+    });
+
     const feedback = await client.callTool({
       name: 'feedback_create',
       arguments: { targetType: 'scene', targetId: scene.id, body: 'Raise the emotional stakes' },
     });
     expect(feedback.isError).not.toBe(true);
     expect(project.feedback.list({ targetType: 'scene', targetId: scene.id })).toHaveLength(1);
+    expect(
+      (
+        await client.callTool({
+          name: 'feedback_list',
+          arguments: { targetType: 'scene', targetId: scene.id, status: 'open' },
+        })
+      ).structuredContent,
+    ).toMatchObject({
+      feedback: [expect.objectContaining({ body: 'Raise the emotional stakes' })],
+    });
+    const shot = (await project.movies.list('shot'))[0];
+    if (!shot) throw new Error('Expected a Shot');
+    expect(
+      (await client.callTool({ name: 'take_list', arguments: { shotId: shot.id } }))
+        .structuredContent,
+    ).toEqual({ takes: [] });
+    expect(
+      (await client.callTool({ name: 'evaluation_list', arguments: { takeId: 'take_missing' } }))
+        .structuredContent,
+    ).toEqual({ evaluations: [] });
+    expect(
+      (await client.callTool({ name: 'analysis_list', arguments: { takeId: 'take_missing' } }))
+        .structuredContent,
+    ).toEqual({ analyses: [] });
+    expect(
+      (await client.callTool({ name: 'proposal_list', arguments: {} })).structuredContent,
+    ).toEqual({
+      proposals: [],
+    });
+    expect(
+      (await client.callTool({ name: 'branch_create', arguments: { name: 'mcp-branch' } })).isError,
+    ).not.toBe(true);
+    expect(
+      (await client.callTool({ name: 'branch_switch', arguments: { name: 'mcp-branch' } })).isError,
+    ).not.toBe(true);
+    const branchList = (await client.callTool({ name: 'branch_list', arguments: {} }))
+      .structuredContent as { branches: Array<{ name: string; current: boolean }> };
+    expect(
+      branchList.branches.some((branch) => branch.name === 'mcp-branch' && branch.current),
+    ).toBe(true);
 
     await client.close();
     await server.close();

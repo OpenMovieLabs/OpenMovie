@@ -191,7 +191,7 @@ export class FakeProvider implements ModelProvider {
   >();
 
   generateText(request: GenerateTextRequest): Promise<GenerateTextResult> {
-    if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (request.signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     const last = request.messages.at(-1)?.content;
     const text =
       typeof last === 'string' ? last : (last?.find((part) => part.type === 'text')?.text ?? '');
@@ -204,7 +204,7 @@ export class FakeProvider implements ModelProvider {
   }
 
   generateImage(request: GenerateImageRequest): Promise<GenerateImageResult> {
-    if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (request.signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     return Promise.resolve({
       bytes: fixturePng,
       mimeType: 'image/png',
@@ -218,7 +218,7 @@ export class FakeProvider implements ModelProvider {
   }
 
   understandImage(request: UnderstandImageRequest): Promise<UnderstandImageResult> {
-    if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (request.signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     return Promise.resolve({
       text: `Fake visual analysis: ${request.prompt}`,
       model: request.model,
@@ -229,7 +229,7 @@ export class FakeProvider implements ModelProvider {
   }
 
   transcribeAudio(request: TranscribeAudioRequest): Promise<TranscribeAudioResult> {
-    if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (request.signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     return Promise.resolve({
       text: 'Fake transcript: deterministic fixture audio.',
       model: request.model,
@@ -241,7 +241,7 @@ export class FakeProvider implements ModelProvider {
   }
 
   submitVideo(request: GenerateVideoRequest): Promise<ProviderJob> {
-    if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (request.signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     const now = new Date().toISOString();
     const id = `fake_video_${createHash('sha256')
       .update(JSON.stringify({ model: request.model, prompt: request.prompt, mode: request.mode }))
@@ -260,18 +260,18 @@ export class FakeProvider implements ModelProvider {
   }
 
   getVideoJob(jobId: string, signal?: AbortSignal): Promise<ProviderJob> {
-    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     const stored = this.videoJobs.get(jobId);
-    if (!stored) throw new Error(`Fake video job not found: ${jobId}`);
+    if (!stored) return Promise.reject(new Error(`Fake video job not found: ${jobId}`));
     return Promise.resolve(structuredClone(stored.job));
   }
 
   collectVideo(jobId: string, signal?: AbortSignal): Promise<GeneratedMedia[]> {
-    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (signal?.aborted) return Promise.reject(new DOMException('Cancelled', 'AbortError'));
     const stored = this.videoJobs.get(jobId);
-    if (!stored) throw new Error(`Fake video job not found: ${jobId}`);
+    if (!stored) return Promise.reject(new Error(`Fake video job not found: ${jobId}`));
     if (stored.job.status !== 'succeeded')
-      throw new Error(`Fake video job is ${stored.job.status}`);
+      return Promise.reject(new Error(`Fake video job is ${stored.job.status}`));
     const bytes = Uint8Array.from(Buffer.from('AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29t', 'base64'));
     return Promise.resolve([
       {
@@ -289,7 +289,7 @@ export class FakeProvider implements ModelProvider {
 
   cancelVideo(jobId: string): Promise<ProviderJob> {
     const stored = this.videoJobs.get(jobId);
-    if (!stored) throw new Error(`Fake video job not found: ${jobId}`);
+    if (!stored) return Promise.reject(new Error(`Fake video job not found: ${jobId}`));
     stored.job.status = 'cancelled';
     stored.job.updatedAt = new Date().toISOString();
     return Promise.resolve(structuredClone(stored.job));

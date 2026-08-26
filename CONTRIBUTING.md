@@ -22,6 +22,7 @@ Before opening a PR, run:
 
 ```bash
 pnpm check
+pnpm test:coverage
 pnpm build
 pnpm perf:baseline -- --enforce
 ```

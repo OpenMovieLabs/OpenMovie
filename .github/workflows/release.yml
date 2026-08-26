@@ -118,6 +118,7 @@ jobs:
           $encoders = (& "$destination/bin/ffmpeg.exe" -hide_banner -encoders 2>&1) -join "`n"
           if ($encoders -notmatch '\smpeg4\s') { throw 'FFmpeg Sidecar lacks the MPEG-4 fallback encoder' }
       - run: pnpm check
+      - run: pnpm test:coverage
       - run: pnpm build
       - name: Verify release signing configuration
         run: node scripts/verify-release-signing.mjs ${{ matrix.target }}

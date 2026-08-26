@@ -11,6 +11,7 @@
 ```bash
 pnpm install --frozen-lockfile
 pnpm check
+pnpm test:coverage
 pnpm build
 pnpm smoke:desktop
 pnpm perf:baseline -- --enforce
@@ -56,6 +57,13 @@ tests skip real FFmpeg work only when no executable is available. `pnpm smoke:de
 Electron/Core/SQLite/Fake Provider/Timeline path and exits itself. `openmovie example` creates the
 maintained three-shot continuity fixture. The executable async video and Plugin fixtures live under
 `examples/`.
+
+`pnpm test:coverage` instruments backend business modules, including Core, Desktop Main helpers,
+Agent/Provider gateways, Project Store, Task/Evaluation/Media engines, CLI and MCP tools. CI fails if
+global coverage drops below 75% statements, 55% branches, 80% functions, or 80% lines. Electron,
+Core and MCP process entrypoints are composition roots and are excluded from unit coverage; their
+wiring is exercised by Desktop smoke and platform CI. Every new backend branch should include its
+normal path plus applicable failure, cancellation, timeout, recovery and security-boundary cases.
 
 See [Plugin Development](./PLUGIN_DEVELOPMENT.md), [Performance](./PERFORMANCE.md),
 [Accessibility](./ACCESSIBILITY.md), and [Releasing](./RELEASING.md).

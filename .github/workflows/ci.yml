@@ -26,6 +26,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm test:coverage
       - run: pnpm build
       - run: pnpm perf:baseline -- --enforce
       - name: Package unpacked desktop
