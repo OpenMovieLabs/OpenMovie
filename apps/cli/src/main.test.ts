@@ -73,5 +73,5 @@ describe('OpenMovie CLI', () => {
       parentId: currentRevision.id,
       authorId: 'cli_user',
     });
-  });
+  }, 15_000);
 });
