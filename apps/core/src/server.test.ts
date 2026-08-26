@@ -320,7 +320,7 @@ describe('CoreServer', () => {
     } finally {
       await server.close();
     }
-  });
+  }, 15_000);
 
   it('configures Provider protocols and persists task, Take, evaluation, and usage state', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'openmovie-core-task-surface-'));

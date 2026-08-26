@@ -34,13 +34,12 @@ jobs:
       WIN_CSC_KEY_PASSWORD: ${{ matrix.target == 'win' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
           version: 11.23.0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: pnpm
+          runtime: node@22.22.3
+          cache: true
+          install: false
       - run: pnpm install --frozen-lockfile
       - name: Resolve version
         shell: bash
