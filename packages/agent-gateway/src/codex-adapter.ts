@@ -106,7 +106,7 @@ export class CodexAppServerAdapter {
   ): Promise<string> {
     const result = (await this.requirePeer().request('thread/start', {
       cwd,
-      sandbox: 'readOnly',
+      sandbox: 'read-only',
       approvalPolicy: 'never',
       serviceName: 'openmovie',
       ...(model ? { model } : {}),

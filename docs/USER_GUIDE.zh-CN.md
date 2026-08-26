@@ -11,7 +11,7 @@ OpenMovie 把电影理解为一个可检查的工程：YAML Movie IR 是源文�
 1. 安装对应平台的签名版本并启动 OpenMovie。
 2. 点击“新建电影 / New movie”，输入片名并选择工程目录。
 3. 在中央对话框用一句话描述电影、角色或第一个场景；不需要先配置复杂工作流。
-4. 左侧工程树会组织 Story、Character、Scene、Shot 和 Timeline，点击对象即可把它作为当前上下文。
+4. 左侧会列出最近使用的全部电影工程；只有当前工程展开 Story、Character、Scene、Shot 和 Timeline，点击其他工程即可切换并展开。
 5. 中央对话连续显示 Task 进度、远程调用审批和可审查的工程修改提案。
 6. 右侧资源区展示 Shot、生成的 Take、Current Cut 和版本历史。选择 Take 会创建一个新的 Revision，而不是覆盖历史。
 

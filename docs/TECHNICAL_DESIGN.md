@@ -1219,7 +1219,7 @@ Revision 更新，可审计和回滚。
 
 Renderer 使用同一份 Core 状态投影出三个相互联动的区域：
 
-- 左侧 Project Explorer 读取 Story、Character、Scene、Shot、Timeline 与 Branch 摘要，只负责定位工程对象。
+- 左侧 Project Explorer 从应用级 Recent Projects 索引读取全部工程，只展开当前 Core 会话已打开工程的 Story、Character、Scene、Shot、Timeline 与 Branch 摘要；切换工程时清空旧选择并重新获取完整 Project 投影。
 - 中央 Conversation 将 Task、Step、Approval 和 Revision Proposal 渲染为连续消息；输入框只提交目标、当前对象上下文及所选 Harness/Provider，不在 Renderer 编排工作流。
 - 右侧 Resource Workspace 展示选中对象、不可变 Take、Timeline Render 与 Revision 历史。点击 Shot 或 Take 会更新中央输入的目标上下文。
 

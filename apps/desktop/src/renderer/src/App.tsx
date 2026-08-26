@@ -99,6 +99,61 @@ function taskStatusText(status: Task['status'], locale: UiLocale): string {
   return labels[status][locale === 'zh-CN' ? 0 : 1];
 }
 
+function taskStepText(title: string, locale: UiLocale): string {
+  const labels: Record<string, [string, string]> = {
+    'Plan the visual intent': ['规划视觉意图', 'Plan the visual intent'],
+    'Prepare reviewable Movie IR actions': [
+      '准备可审查的工程修改',
+      'Prepare reviewable project changes',
+    ],
+    'Generate an image Take': ['生成图片 Take', 'Generate an image Take'],
+    'Generate a video Take': ['生成视频 Take', 'Generate a video Take'],
+    'Render selected Takes into the current cut': [
+      '将已选 Take 渲染为当前成片',
+      'Render selected Takes into the current cut',
+    ],
+    'Analyze media with timecoded evidence': [
+      '分析媒体并生成时间码证据',
+      'Analyze media with timecoded evidence',
+    ],
+  };
+  const label = labels[title];
+  return label ? label[locale === 'zh-CN' ? 0 : 1] : title;
+}
+
+function taskErrorSummary(error: string | undefined, locale: UiLocale): string {
+  const isCodexSandboxMismatch =
+    error?.includes('unknown variant `readOnly`') || error?.includes('expected one of `read-only`');
+  if (isCodexSandboxMismatch) {
+    return locale === 'zh-CN'
+      ? '本地 Codex 的协议参数不兼容。OpenMovie 已修复该问题，请重新发送任务。'
+      : 'The local Codex protocol parameters were incompatible. OpenMovie has fixed this; resend the task.';
+  }
+  return locale === 'zh-CN'
+    ? '任务没有完成。你可以检查模型设置后重新发送。'
+    : 'The task did not complete. Check the model settings and try again.';
+}
+
+function applicationErrorText(error: string, locale: UiLocale): string {
+  if (error.includes('No project is open')) {
+    return locale === 'zh-CN'
+      ? '当前工程连接已失效，请从左侧重新打开工程。'
+      : 'The current project connection was lost. Reopen it from the sidebar.';
+  }
+  if (error.includes('Project is not in Recent Projects')) {
+    return locale === 'zh-CN'
+      ? '这个工程不在最近列表中，请使用“打开工程”重新选择。'
+      : 'This movie is no longer in Recents. Use Open project to select it again.';
+  }
+  if (error.toLowerCase().includes('lock')) {
+    return locale === 'zh-CN'
+      ? '这个工程正在另一个 OpenMovie 窗口中使用。关闭另一个窗口后再试。'
+      : 'This movie is open in another OpenMovie window. Close it and try again.';
+  }
+  const detail = error.replace(/^Error invoking remote method '[^']+': Error:\s*/, '');
+  return locale === 'zh-CN' ? `操作未完成：${detail}` : `The action did not complete: ${detail}`;
+}
+
 export function App(): React.JSX.Element {
   const initialized = useRef(false);
   const threadEnd = useRef<HTMLDivElement>(null);
@@ -344,7 +399,9 @@ export function App(): React.JSX.Element {
   const openRecent = (path: string): void => {
     void run(async () => {
       setSelection(null);
-      await loadProject(await window.openMovie.openRecentProject(path));
+      const opened = await window.openMovie.openRecentProject(path);
+      setRecentProjects(await window.openMovie.listRecentProjects());
+      await loadProject(opened);
     });
   };
 
@@ -456,6 +513,17 @@ export function App(): React.JSX.Element {
   const filteredTakes = takes.filter((take) =>
     `${take.id} ${take.shotId}`.toLowerCase().includes(query),
   );
+  const sidebarProjects = project
+    ? [
+        {
+          path: project.root,
+          title: project.title,
+          lastOpenedAt:
+            recentProjects.find((recent) => recent.path === project.root)?.lastOpenedAt ?? '',
+        },
+        ...recentProjects.filter((recent) => recent.path !== project.root),
+      ]
+    : recentProjects;
 
   return (
     <div className="studio-shell" aria-busy={busy}>
@@ -472,118 +540,141 @@ export function App(): React.JSX.Element {
         <button className="new-project-button" onClick={() => setShowCreate(true)}>
           <Plus size={16} /> {text('新建电影', 'New movie')}
         </button>
-        {project ? (
-          <>
-            <div className="sidebar-project-heading">
-              <span>{text('当前工程', 'CURRENT PROJECT')}</span>
-              <strong>{project.title}</strong>
-            </div>
-            <nav className="project-tree" aria-label={text('工程结构', 'Project structure')}>
-              <button
-                className={selection?.kind === 'story' ? 'tree-row active' : 'tree-row'}
-                onClick={() => story && setSelection({ kind: 'story', item: story })}
+        <div className="projects-area">
+          <span className="sidebar-label">{text('电影工程', 'MOVIE PROJECTS')}</span>
+          {sidebarProjects.map((sidebarProject) => {
+            const isCurrent = project?.root === sidebarProject.path;
+            return (
+              <div
+                className={isCurrent ? 'sidebar-project current' : 'sidebar-project'}
+                key={sidebarProject.path}
               >
-                <FileText size={15} />
-                <span>{text('故事与世界观', 'Story & world')}</span>
-              </button>
-              <button
-                className={selection?.kind === 'character' ? 'tree-row active' : 'tree-row'}
-                onClick={() =>
-                  setSelection(characters[0] ? { kind: 'character', item: characters[0] } : null)
-                }
-              >
-                <UserRound size={15} />
-                <span>{text('角色', 'Characters')}</span>
-                <small>{characters.length}</small>
-              </button>
-              <button className="tree-row" onClick={() => setSceneTreeOpen((value) => !value)}>
-                {sceneTreeOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                <span>{text('场景与镜头', 'Scenes & shots')}</span>
-                <small>{shots.length}</small>
-              </button>
-              {sceneTreeOpen && (
-                <div className="tree-children">
-                  {scenes.length === 0 && (
-                    <span className="tree-empty">{text('还没有场景', 'No scenes yet')}</span>
-                  )}
-                  {scenes.map((scene) => (
-                    <div key={scene.id} className="scene-tree-group">
+                <button
+                  className="project-row"
+                  onClick={() => {
+                    if (isCurrent && project) {
+                      setSelection({ kind: 'project', item: project });
+                      setResourceView('resources');
+                    } else {
+                      openRecent(sidebarProject.path);
+                    }
+                  }}
+                >
+                  {isCurrent ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  <Film size={14} />
+                  <span>
+                    <strong>{sidebarProject.title}</strong>
+                    <small>
+                      {isCurrent
+                        ? text('正在编辑', 'Editing')
+                        : new Date(sidebarProject.lastOpenedAt).toLocaleDateString()}
+                    </small>
+                  </span>
+                </button>
+                {isCurrent && project && (
+                  <div className="project-expanded">
+                    <nav
+                      className="project-tree"
+                      aria-label={text('工程结构', 'Project structure')}
+                    >
                       <button
-                        className={
-                          selection?.kind === 'scene' && selection.item.id === scene.id
-                            ? 'tree-row active'
-                            : 'tree-row'
-                        }
-                        onClick={() => setSelection({ kind: 'scene', item: scene })}
+                        className={selection?.kind === 'story' ? 'tree-row active' : 'tree-row'}
+                        onClick={() => story && setSelection({ kind: 'story', item: story })}
                       >
-                        <Film size={14} />
-                        <span>{scene.title}</span>
+                        <FileText size={15} />
+                        <span>{text('故事与世界观', 'Story & world')}</span>
                       </button>
-                      {shots
-                        .filter((shot) => shot.scene === scene.id)
-                        .map((shot, index) => (
-                          <button
-                            key={shot.id}
-                            className={
-                              selection?.kind === 'shot' && selection.item.id === shot.id
-                                ? 'tree-row shot-row active'
-                                : 'tree-row shot-row'
-                            }
-                            onClick={() => setSelection({ kind: 'shot', item: shot })}
-                          >
-                            <Clapperboard size={13} />
-                            <span>{text(`镜头 ${index + 1}`, `Shot ${index + 1}`)}</span>
-                          </button>
-                        ))}
+                      <button
+                        className={selection?.kind === 'character' ? 'tree-row active' : 'tree-row'}
+                        onClick={() =>
+                          setSelection(
+                            characters[0] ? { kind: 'character', item: characters[0] } : null,
+                          )
+                        }
+                      >
+                        <UserRound size={15} />
+                        <span>{text('角色', 'Characters')}</span>
+                        <small>{characters.length}</small>
+                      </button>
+                      <button
+                        className="tree-row"
+                        onClick={() => setSceneTreeOpen((value) => !value)}
+                      >
+                        {sceneTreeOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                        <span>{text('场景与镜头', 'Scenes & shots')}</span>
+                        <small>{scenes.length}</small>
+                      </button>
+                      {sceneTreeOpen && (
+                        <div className="tree-children">
+                          {scenes.length === 0 && (
+                            <span className="tree-empty">
+                              {text('还没有场景', 'No scenes yet')}
+                            </span>
+                          )}
+                          {scenes.map((scene) => (
+                            <div key={scene.id} className="scene-tree-group">
+                              <button
+                                className={
+                                  selection?.kind === 'scene' && selection.item.id === scene.id
+                                    ? 'tree-row active'
+                                    : 'tree-row'
+                                }
+                                onClick={() => setSelection({ kind: 'scene', item: scene })}
+                              >
+                                <Film size={14} />
+                                <span>{scene.title}</span>
+                              </button>
+                              {shots
+                                .filter((shot) => shot.scene === scene.id)
+                                .map((shot, index) => (
+                                  <button
+                                    key={shot.id}
+                                    className={
+                                      selection?.kind === 'shot' && selection.item.id === shot.id
+                                        ? 'tree-row shot-row active'
+                                        : 'tree-row shot-row'
+                                    }
+                                    onClick={() => setSelection({ kind: 'shot', item: shot })}
+                                  >
+                                    <Clapperboard size={13} />
+                                    <span>{text(`镜头 ${index + 1}`, `Shot ${index + 1}`)}</span>
+                                  </button>
+                                ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        className="tree-row"
+                        onClick={() =>
+                          setSelection(renders[0] ? { kind: 'render', item: renders[0] } : null)
+                        }
+                      >
+                        <Video size={15} />
+                        <span>{text('时间线与成片', 'Timeline & cuts')}</span>
+                        <small>{renders.length}</small>
+                      </button>
+                      <button className="tree-row" onClick={runDoctor}>
+                        <Check size={15} />
+                        <span>{text('工程检查', 'Project checks')}</span>
+                      </button>
+                    </nav>
+                    <div className="branch-row">
+                      <GitBranch size={14} />
+                      <span>
+                        {branches.find((branch) => branch.current)?.name ?? project.currentBranch}
+                      </span>
+                      <small>{revisions.length}</small>
                     </div>
-                  ))}
-                </div>
-              )}
-              <button
-                className="tree-row"
-                onClick={() =>
-                  setSelection(renders[0] ? { kind: 'render', item: renders[0] } : null)
-                }
-              >
-                <Video size={15} />
-                <span>{text('时间线与成片', 'Timeline & cuts')}</span>
-                <small>{renders.length}</small>
-              </button>
-              <button className="tree-row" onClick={runDoctor}>
-                <Check size={15} />
-                <span>{text('工程检查', 'Project checks')}</span>
-              </button>
-            </nav>
-            <div className="sidebar-spacer" />
-            <div className="branch-row">
-              <GitBranch size={14} />
-              <span>
-                {branches.find((branch) => branch.current)?.name ?? project.currentBranch}
-              </span>
-              <small>{revisions.length}</small>
-            </div>
-          </>
-        ) : (
-          <div className="recent-area">
-            <span className="sidebar-label">{text('最近工程', 'RECENT')}</span>
-            {recentProjects.map((recent) => (
-              <button
-                key={recent.path}
-                className="recent-row"
-                onClick={() => openRecent(recent.path)}
-              >
-                <Film size={15} />
-                <span>
-                  <strong>{recent.title}</strong>
-                  <small>{recent.path}</small>
-                </span>
-              </button>
-            ))}
-            {recentProjects.length === 0 && (
-              <p className="muted-copy">{text('还没有最近工程', 'No recent movies')}</p>
-            )}
-          </div>
-        )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {sidebarProjects.length === 0 && (
+            <p className="muted-copy">{text('还没有电影工程', 'No movie projects yet')}</p>
+          )}
+        </div>
         <div className="sidebar-footer">
           <button className="tree-row" onClick={openProject}>
             <FolderOpen size={15} /> {text('打开工程', 'Open project')}
@@ -665,11 +756,7 @@ export function App(): React.JSX.Element {
                 .map((task) => (
                   <div className="task-conversation" key={task.id}>
                     <article className="message user-message">
-                      <div className="message-avatar">
-                        <UserRound size={15} />
-                      </div>
                       <div>
-                        <span>{text('你', 'You')}</span>
                         <p>{task.goal}</p>
                       </div>
                     </article>
@@ -686,9 +773,15 @@ export function App(): React.JSX.Element {
                           </div>
                         </div>
                         {task.status === 'failed' ? (
-                          <p className="task-error">
-                            {task.error ?? text('任务执行失败', 'Task failed')}
-                          </p>
+                          <div className="task-error">
+                            <strong>{taskErrorSummary(task.error, uiLocale)}</strong>
+                            {task.error && (
+                              <details>
+                                <summary>{text('技术详情', 'Technical details')}</summary>
+                                <code>{task.error}</code>
+                              </details>
+                            )}
+                          </div>
                         ) : (
                           <p>
                             {task.status === 'succeeded'
@@ -711,7 +804,7 @@ export function App(): React.JSX.Element {
                           {task.steps.map((step) => (
                             <div key={step.id} className={`task-step ${step.status}`}>
                               <span className="step-indicator" />
-                              <span>{step.title}</span>
+                              <span>{taskStepText(step.title, uiLocale)}</span>
                             </div>
                           ))}
                         </div>
@@ -775,7 +868,7 @@ export function App(): React.JSX.Element {
         {error && (
           <div className="inline-error" role="alert">
             <CircleAlert size={15} />
-            <span>{error}</span>
+            <span>{applicationErrorText(error, uiLocale)}</span>
             <button onClick={() => setError(null)} aria-label="Dismiss">
               <X size={14} />
             </button>
@@ -791,7 +884,7 @@ export function App(): React.JSX.Element {
                   ? text('描述你想创作或修改的内容…', 'Describe what you want to create or change…')
                   : text('先创建或打开一个电影工程', 'Create or open a movie project first')
               }
-              rows={3}
+              rows={2}
               onChange={(event) => setComposer(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -1433,7 +1526,7 @@ function ResourceInspector({
     );
   if (selection.kind === 'project')
     return (
-      <section className="inspector-card">
+      <section className="inspector-card project-inspector">
         <span className="section-kicker">PROJECT</span>
         <h3>{selection.item.title}</h3>
         <p>{selection.item.root}</p>

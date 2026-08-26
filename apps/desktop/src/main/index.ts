@@ -24,6 +24,7 @@ import {
   taskEventSchema,
   takeRecordSchema,
   timelineRenderRecordSchema,
+  type ProjectSummary,
 } from '@openmovie/contracts';
 import {
   briefSchema,
@@ -252,20 +253,41 @@ void app
       if (!secrets?.listRecentProjects().some((item) => item.path === path)) {
         throw new Error('Project is not in Recent Projects');
       }
-      try {
-        const opened = projectSummarySchema.parse(
+      const openRecentProject = async (takeoverStaleLock: boolean) =>
+        projectSummarySchema.parse(
           await core?.request({
             method: 'project.open',
-            params: { path, takeoverStaleLock: false },
+            params: { path, takeoverStaleLock },
           }),
         );
-        activeProjectRoot = opened.root;
-        secrets.rememberProject(opened.root, opened.title);
-        return opened;
+      let opened: ProjectSummary;
+      try {
+        opened = await openRecentProject(false);
       } catch (error) {
-        secrets.forgetProject(path);
-        throw error;
+        const code =
+          typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+        if (code !== 'PROJECT_LOCK_STALE') throw error;
+        const isChinese = app.getLocale().toLowerCase().startsWith('zh');
+        const confirmation = await dialog.showMessageBox({
+          type: 'warning',
+          title: isChinese ? '恢复电影工程' : 'Recover movie project',
+          message: isChinese
+            ? 'OpenMovie 上次可能没有正常关闭。是否接管已失效的工程锁？'
+            : 'OpenMovie may not have closed cleanly. Take over the stale project lock?',
+          detail: path,
+          buttons: isChinese ? ['取消', '接管并打开'] : ['Cancel', 'Take over and open'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        if (confirmation.response !== 1) {
+          throw new Error('Project opening was cancelled', { cause: error });
+        }
+        opened = await openRecentProject(true);
       }
+      activeProjectRoot = opened.root;
+      secrets.rememberProject(opened.root, opened.title);
+      return opened;
     });
     ipcMain.handle('openmovie:project-summary', async () =>
       projectSummarySchema.parse(
