@@ -61,6 +61,28 @@ describe('task presentation', () => {
     expect(result).toBe('只显示这句话');
   });
 
+  it('uses the final summary when a harness emits messages before and after tool calls', () => {
+    const result = taskResponseText(
+      task({
+        steps: [
+          {
+            id: 'step-1',
+            kind: 'text.generate',
+            title: 'Reply to the user',
+            input: {},
+            status: 'succeeded',
+            attempt: 1,
+            output: {
+              text: '{"summary":"正在读取工程","actions":[]}\n\n{"summary":"故事已经建立","actions":[{"type":"story.update"}]}',
+            },
+          },
+        ],
+      }),
+      'zh-CN',
+    );
+    expect(result).toBe('故事已经建立');
+  });
+
   it('hides conversational implementation steps but keeps real tool work', () => {
     const steps = visibleExecutionSteps(
       task({

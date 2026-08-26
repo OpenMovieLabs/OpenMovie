@@ -165,15 +165,37 @@ export class MovieWorkspace {
     const scenes = new Map(
       ((await this.list('scene')) as Scene[]).map((scene) => [scene.id, scene]),
     );
+    const characters = new Map(
+      ((await this.list('character')) as Character[]).map((character) => [character.id, character]),
+    );
     const shots = new Map(((await this.list('shot')) as Shot[]).map((shot) => [shot.id, shot]));
     const baseSceneRevisions = new Map([...scenes].map(([id, scene]) => [id, scene.revision]));
     const baseShotRevisions = new Map([...shots].map(([id, shot]) => [id, shot.revision]));
     let lastSceneId: string | undefined;
+    const characterRefs = new Map<string, string>();
+    const sceneRefs = new Map<string, string>();
+    for (const character of characters.values()) {
+      characterRefs.set(character.id, character.id);
+      characterRefs.set(character.name, character.id);
+    }
+    for (const scene of scenes.values()) sceneRefs.set(scene.id, scene.id);
+    const resolveCharacter = (ref: string): string => {
+      const id = characterRefs.get(ref);
+      if (!id) throw new Error(`Character not found for Agent action: ${ref}`);
+      return id;
+    };
+    const resolveCharacters = (refs: string[] | undefined): string[] =>
+      (refs ?? []).map(resolveCharacter);
 
     for (const action of input.plan.actions) {
       if (action.type === 'story.update') {
-        if (action.premise !== undefined)
-          brief = briefSchema.parse({ ...brief, premise: action.premise });
+        brief = briefSchema.parse({
+          ...brief,
+          ...(action.premise === undefined ? {} : { premise: action.premise }),
+          ...(action.genres === undefined ? {} : { genres: action.genres }),
+          ...(action.audience === undefined ? {} : { audience: action.audience }),
+          ...(action.tone === undefined ? {} : { tone: action.tone }),
+        });
         bible = storyBibleSchema.parse({
           ...bible,
           ...(action.themes === undefined ? {} : { themes: action.themes }),
@@ -182,9 +204,41 @@ export class MovieWorkspace {
         });
         storyChanged ||=
           action.premise !== undefined ||
+          action.genres !== undefined ||
+          action.audience !== undefined ||
+          action.tone !== undefined ||
           action.themes !== undefined ||
           action.world !== undefined ||
           action.rules !== undefined;
+        continue;
+      }
+      if (action.type === 'character.create') {
+        const now = new Date().toISOString();
+        const character = characterSchema.parse({
+          schema_version: 0,
+          id: createId('char'),
+          type: 'character',
+          revision: 0,
+          created_at: now,
+          updated_at: now,
+          name: action.name,
+          ...(action.role ? { role: action.role } : {}),
+          ...(action.motivation ? { motivation: action.motivation } : {}),
+          identity: {
+            ...(action.age_range ? { age_range: action.age_range } : {}),
+            ...(action.appearance ? { appearance: action.appearance } : {}),
+            distinguishing_features: action.distinguishing_features ?? [],
+          },
+          reference_assets: [],
+          constraints: [],
+          extensions: {},
+        });
+        characters.set(character.id, character);
+        characterRefs.set(character.id, character.id);
+        characterRefs.set(character.name, character.id);
+        if (action.key) characterRefs.set(action.key, character.id);
+        changes.set(entityPath(character), stringifyYaml(character));
+        affected.add(character.id);
         continue;
       }
       if (action.type === 'scene.create') {
@@ -203,7 +257,11 @@ export class MovieWorkspace {
               -1,
             ) + 1,
           story_goal: action.story_goal,
-          characters: [],
+          ...(action.summary ? { summary: action.summary } : {}),
+          ...(action.location_description
+            ? { location_description: action.location_description }
+            : {}),
+          characters: resolveCharacters(action.character_refs),
           shots: [],
           constraints: [],
           extensions: {},
@@ -211,6 +269,8 @@ export class MovieWorkspace {
         scenes.set(scene.id, scene);
         baseSceneRevisions.set(scene.id, scene.revision);
         lastSceneId = scene.id;
+        sceneRefs.set(scene.id, scene.id);
+        if (action.key) sceneRefs.set(action.key, scene.id);
         screenplay = screenplaySchema.parse({
           ...screenplay,
           scenes: [...screenplay.scenes, scene.id],
@@ -221,7 +281,10 @@ export class MovieWorkspace {
         continue;
       }
       if (action.type === 'shot.create') {
-        const sceneId = action.scene_id === '@last_scene' ? lastSceneId : action.scene_id;
+        const sceneId =
+          action.scene_id === '@last_scene'
+            ? lastSceneId
+            : (sceneRefs.get(action.scene_id) ?? action.scene_id);
         if (!sceneId) throw new Error('shot.create requires a Scene or a preceding scene.create');
         const scene = scenes.get(sceneId);
         if (!scene) throw new Error(`Scene not found for Agent action: ${sceneId}`);
@@ -240,13 +303,26 @@ export class MovieWorkspace {
               -1,
             ) + 1,
           duration_us: action.duration_us,
-          characters: [],
+          ...(action.visual_description ? { visual_description: action.visual_description } : {}),
+          ...(action.action ? { action: action.action } : {}),
+          ...(action.lighting ? { lighting: action.lighting } : {}),
+          ...(action.composition ? { composition: action.composition } : {}),
+          ...(action.audio_description ? { audio_description: action.audio_description } : {}),
+          characters: resolveCharacters(action.character_refs),
           camera: {
             ...(action.framing ? { framing: action.framing } : {}),
             ...(action.movement ? { movement: action.movement } : {}),
           },
-          performance: {},
-          dialogue: null,
+          performance: {
+            ...(action.performance_emotion ? { emotion: action.performance_emotion } : {}),
+          },
+          dialogue:
+            action.dialogue_text && action.dialogue_speaker_ref
+              ? {
+                  speaker: resolveCharacter(action.dialogue_speaker_ref),
+                  text: action.dialogue_text,
+                }
+              : null,
           constraints: [],
           generation: {
             strategy: 'balanced',
@@ -279,6 +355,15 @@ export class MovieWorkspace {
         revision: (baseShotRevisions.get(action.shot_id) ?? shot.revision) + 1,
         updated_at: new Date().toISOString(),
         ...(action.duration_us === undefined ? {} : { duration_us: action.duration_us }),
+        ...(action.visual_description === undefined
+          ? {}
+          : { visual_description: action.visual_description }),
+        ...(action.action === undefined ? {} : { action: action.action }),
+        ...(action.lighting === undefined ? {} : { lighting: action.lighting }),
+        ...(action.composition === undefined ? {} : { composition: action.composition }),
+        ...(action.audio_description === undefined
+          ? {}
+          : { audio_description: action.audio_description }),
         camera: {
           ...shot.camera,
           ...(action.framing === undefined ? {} : { framing: action.framing }),

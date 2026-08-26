@@ -125,10 +125,15 @@ export class CodexAppServerAdapter {
     return result.thread.id;
   }
 
-  async startTurn(threadId: string, text: string): Promise<unknown> {
+  async startTurn(
+    threadId: string,
+    text: string,
+    outputSchema?: Record<string, unknown>,
+  ): Promise<unknown> {
     return this.requirePeer().request('turn/start', {
       threadId,
       input: [{ type: 'text', text }],
+      ...(outputSchema ? { outputSchema } : {}),
     });
   }
 
@@ -140,6 +145,7 @@ export class CodexAppServerAdapter {
     timeoutMs?: number;
     dynamicTools?: DynamicToolSpec[];
     onToolCall?: DynamicToolHandler;
+    outputSchema?: Record<string, unknown>;
   }): Promise<CodexTurnResult> {
     await this.start();
     const threadId = await this.startThread(input.cwd, input.model, input.dynamicTools);
@@ -209,7 +215,7 @@ export class CodexAppServerAdapter {
         abort();
         return;
       }
-      void this.startTurn(threadId, input.text).then(
+      void this.startTurn(threadId, input.text, input.outputSchema).then(
         (result) => {
           if (typeof result !== 'object' || result === null || !('turn' in result)) {
             finish(() => reject(new Error('Codex did not return a turn')));

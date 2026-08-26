@@ -31,7 +31,6 @@ import {
 
 import type {
   CoreHealth,
-  DoctorReport,
   HarnessHealth,
   ProjectSummary,
   ProviderUsageSummary,
@@ -50,21 +49,16 @@ import type {
 } from '../../preload/index.js';
 import { detectUiLocale, type UiLocale } from './i18n.js';
 import { ensureActiveProject, reconcileRecentProjects } from './project-list.js';
+import {
+  projectResourceCount,
+  reconcileResourceSelection,
+  storyHasContent,
+  type ResourceSelection,
+} from './resource-selection.js';
 import { taskResponseText, visibleExecutionSteps } from './task-presentation.js';
 
 type RuntimeState =
   { kind: 'loading' } | { kind: 'ready'; health: CoreHealth } | { kind: 'error'; message: string };
-
-type ResourceSelection =
-  | { kind: 'project'; item: ProjectSummary }
-  | { kind: 'story'; item: StoryDocuments }
-  | { kind: 'character'; item: Character }
-  | { kind: 'scene'; item: Scene }
-  | { kind: 'shot'; item: Shot }
-  | { kind: 'take'; item: TakeRecord }
-  | { kind: 'render'; item: TimelineRenderRecord }
-  | { kind: 'revision'; item: RevisionRecord }
-  | { kind: 'doctor'; item: DoctorReport };
 
 type ResourceView = 'resources' | 'versions';
 
@@ -152,6 +146,11 @@ function applicationErrorText(error: string, locale: UiLocale): string {
       ? '这个工程不在最近列表中，请使用“打开工程”重新选择。'
       : 'This movie is no longer in Recents. Use Open project to select it again.';
   }
+  if (error.includes('openmovie.yaml') && error.includes('ENOENT')) {
+    return locale === 'zh-CN'
+      ? '所选目录不是 OpenMovie 工程。请选择内部含有 openmovie.yaml 的电影工程目录。'
+      : 'The selected folder is not an OpenMovie project. Choose the movie folder containing openmovie.yaml.';
+  }
   if (error.toLowerCase().includes('lock')) {
     return locale === 'zh-CN'
       ? '这个工程正在另一个 OpenMovie 窗口中使用。关闭另一个窗口后再试。'
@@ -183,9 +182,10 @@ export function App(): React.JSX.Element {
   const [selection, setSelection] = useState<ResourceSelection | null>(null);
   const [resourceView, setResourceView] = useState<ResourceView>('resources');
   const [sceneTreeOpen, setSceneTreeOpen] = useState(true);
+  const [characterTreeOpen, setCharacterTreeOpen] = useState(true);
   const [resourceSearch, setResourceSearch] = useState('');
   const [composer, setComposer] = useState('');
-  const [plannerProviderId, setPlannerProviderId] = useState('fake');
+  const [plannerProviderId, setPlannerProviderId] = useState('');
   const [mediaProviderId, setMediaProviderId] = useState('fake');
   const [mediaKind, setMediaKind] = useState<'none' | 'image' | 'video'>('none');
   const [showComposerSettings, setShowComposerSettings] = useState(false);
@@ -222,7 +222,6 @@ export function App(): React.JSX.Element {
 
   const planningProviders = useMemo(
     () => [
-      { id: 'fake', label: text('内置离线模型', 'Built-in offline') },
       ...harnesses
         .filter((item) => item.available && item.id !== 'direct')
         .map((item) => ({ id: `harness:${item.id}`, label: item.name })),
@@ -314,7 +313,18 @@ export function App(): React.JSX.Element {
     setProviders(nextProviders);
     setUsage(nextUsage);
     setTakes(takeGroups.flat());
-    setSelection((current) => current ?? { kind: 'project', item: summary });
+    setSelection((current) =>
+      reconcileResourceSelection(current, {
+        project: summary,
+        story: nextStory,
+        characters: typedCharacters,
+        scenes: typedScenes,
+        shots: typedShots,
+        takes: takeGroups.flat(),
+        renders: nextRenders,
+        revisions: nextRevisions,
+      }),
+    );
   };
 
   const refreshProject = async (): Promise<void> => {
@@ -383,6 +393,11 @@ export function App(): React.JSX.Element {
     setMediaProviderId('fake');
   }, [mediaKind, mediaProviders, mediaProviderId]);
 
+  useEffect(() => {
+    if (planningProviders.some((item) => item.id === plannerProviderId)) return;
+    setPlannerProviderId(planningProviders[0]?.id ?? '');
+  }, [planningProviders, plannerProviderId]);
+
   const createProject = (): void => {
     void run(async () => {
       const created = await window.openMovie.createProject(newProjectTitle.trim());
@@ -418,7 +433,7 @@ export function App(): React.JSX.Element {
 
   const submitPrompt = (): void => {
     const goal = composer.trim();
-    if (!project || !goal || busy) return;
+    if (!project || !goal || busy || !plannerProviderId) return;
     const requestedMediaKind = mediaKind;
     setComposer('');
     if (requestedMediaKind !== 'none') setMediaKind('none');
@@ -535,7 +550,15 @@ export function App(): React.JSX.Element {
   const filteredTakes = takes.filter((take) =>
     `${take.id} ${take.shotId} ${takeLabel(take)}`.toLowerCase().includes(query),
   );
-  const hasProjectResources = shots.length > 0 || takes.length > 0 || renders.length > 0;
+  const resourceCount = projectResourceCount({
+    story,
+    characterCount: characters.length,
+    sceneCount: scenes.length,
+    shotCount: shots.length,
+    takeCount: takes.length,
+    renderCount: renders.length,
+  });
+  const hasProjectResources = resourceCount > 0;
   const hasSelectedTake = shots.some((shot) => Boolean(shot.selected_take));
   const projectNavigationLocked = busy;
   const sidebarProjects = ensureActiveProject(recentProjects, project);
@@ -619,17 +642,32 @@ export function App(): React.JSX.Element {
                         <span>{text('故事与世界观', 'Story & world')}</span>
                       </button>
                       <button
-                        className={selection?.kind === 'character' ? 'tree-row active' : 'tree-row'}
-                        onClick={() =>
-                          setSelection(
-                            characters[0] ? { kind: 'character', item: characters[0] } : null,
-                          )
-                        }
+                        className="tree-row"
+                        onClick={() => setCharacterTreeOpen((value) => !value)}
                       >
-                        <UserRound size={15} />
+                        {characterTreeOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                         <span>{text('角色', 'Characters')}</span>
                         <small>{characters.length}</small>
                       </button>
+                      {characterTreeOpen && characters.length > 0 && (
+                        <div className="tree-children">
+                          {characters.map((character) => (
+                            <button
+                              key={character.id}
+                              className={
+                                selection?.kind === 'character' &&
+                                selection.item.id === character.id
+                                  ? 'tree-row active'
+                                  : 'tree-row'
+                              }
+                              onClick={() => setSelection({ kind: 'character', item: character })}
+                            >
+                              <UserRound size={14} />
+                              <span>{character.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <button
                         className="tree-row"
                         onClick={() => setSceneTreeOpen((value) => !value)}
@@ -962,6 +1000,9 @@ export function App(): React.JSX.Element {
                     onChange={(event) => setPlannerProviderId(event.target.value)}
                     disabled={!project}
                   >
+                    {planningProviders.length === 0 && (
+                      <option value="">{text('未找到可用模型', 'No model available')}</option>
+                    )}
                     {planningProviders.map((provider) => (
                       <option key={provider.id} value={provider.id}>
                         {provider.label}
@@ -1035,7 +1076,7 @@ export function App(): React.JSX.Element {
               <button
                 className="send-button"
                 aria-label={text('发送', 'Send')}
-                disabled={!project || busy || !composer.trim()}
+                disabled={!project || busy || !composer.trim() || !plannerProviderId}
                 onClick={submitPrompt}
               >
                 {busy ? <LoaderCircle size={17} /> : <Send size={17} />}
@@ -1043,7 +1084,12 @@ export function App(): React.JSX.Element {
             </div>
           </div>
           <small>
-            {text('Enter 发送 · Shift+Enter 换行', 'Enter to send · Shift+Enter for newline')}
+            {planningProviders.length === 0
+              ? text(
+                  '请先安装 Codex / Claude Code，或在设置中添加文本 Provider',
+                  'Install Codex / Claude Code or add a text provider in Settings',
+                )
+              : text('Enter 发送 · Shift+Enter 换行', 'Enter to send · Shift+Enter for newline')}
           </small>
         </footer>
       </main>
@@ -1087,7 +1133,7 @@ export function App(): React.JSX.Element {
           </div>
           {project && (
             <div className="resource-count">
-              {takes.length + renders.length} {text('个媒体资源', 'media assets')}
+              {resourceCount} {text('个工程资源', 'project resources')}
             </div>
           )}
         </header>
@@ -1198,6 +1244,82 @@ export function App(): React.JSX.Element {
                   <MessageSquare size={14} /> {text('填写创作目标', 'Draft a creative goal')}
                 </button>
               </div>
+            )}
+            {story && storyHasContent(story) && (
+              <section className="resource-section">
+                <div className="section-title">
+                  <span>{text('故事与世界观', 'STORY & WORLD')}</span>
+                  <small>1</small>
+                </div>
+                <button
+                  className={selection?.kind === 'story' ? 'shot-card selected' : 'shot-card'}
+                  onClick={() => setSelection({ kind: 'story', item: story })}
+                >
+                  <FileText size={17} />
+                  <div>
+                    <strong>{story.brief.title}</strong>
+                    <small>{story.brief.premise || story.bible.world}</small>
+                  </div>
+                </button>
+              </section>
+            )}
+            {characters.length > 0 && (
+              <section className="resource-section">
+                <div className="section-title">
+                  <span>{text('角色', 'CHARACTERS')}</span>
+                  <small>{characters.length}</small>
+                </div>
+                <div className="shot-grid">
+                  {characters.map((character) => (
+                    <button
+                      key={character.id}
+                      className={
+                        selection?.kind === 'character' && selection.item.id === character.id
+                          ? 'shot-card selected'
+                          : 'shot-card'
+                      }
+                      onClick={() => setSelection({ kind: 'character', item: character })}
+                    >
+                      <UserRound size={17} />
+                      <div>
+                        <strong>{character.name}</strong>
+                        <small>
+                          {character.role || character.identity.age_range || character.id}
+                        </small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            {scenes.length > 0 && (
+              <section className="resource-section">
+                <div className="section-title">
+                  <span>{text('场景', 'SCENES')}</span>
+                  <small>{scenes.length}</small>
+                </div>
+                <div className="shot-grid">
+                  {scenes.map((scene) => (
+                    <button
+                      key={scene.id}
+                      className={
+                        selection?.kind === 'scene' && selection.item.id === scene.id
+                          ? 'shot-card selected'
+                          : 'shot-card'
+                      }
+                      onClick={() => setSelection({ kind: 'scene', item: scene })}
+                    >
+                      <Film size={17} />
+                      <div>
+                        <strong>{scene.title}</strong>
+                        <small>
+                          {scene.shots.length} {text('个镜头', 'shots')}
+                        </small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
             )}
             {(takes.length > 0 || renders.length > 0) && (
               <section className="resource-section">
@@ -1604,8 +1726,10 @@ function ResourceInspector({
         <span className="section-kicker">SHOT</span>
         <h3>{shot.id}</h3>
         <p>
-          {shot.camera.framing || text('尚未设置景别', 'No framing yet')} ·{' '}
-          {shot.camera.movement || text('静止机位', 'Static camera')}
+          {shot.visual_description ||
+            shot.action ||
+            shot.camera.framing ||
+            text('尚未设置画面描述', 'No visual description yet')}
         </p>
         <div className="metadata-grid">
           <span>
@@ -1617,6 +1741,42 @@ function ResourceInspector({
             <strong>{shot.selected_take ?? '—'}</strong>
           </span>
         </div>
+        <div className="inspector-detail-list">
+          <p>
+            <strong>{text('景别与运镜', 'Camera')}</strong>
+            {shot.camera.framing || '—'} · {shot.camera.movement || text('静止', 'Static')}
+          </p>
+          {shot.action && (
+            <p>
+              <strong>{text('动作', 'Action')}</strong>
+              {shot.action}
+            </p>
+          )}
+          {shot.lighting && (
+            <p>
+              <strong>{text('光线', 'Lighting')}</strong>
+              {shot.lighting}
+            </p>
+          )}
+          {shot.composition && (
+            <p>
+              <strong>{text('构图', 'Composition')}</strong>
+              {shot.composition}
+            </p>
+          )}
+          {shot.audio_description && (
+            <p>
+              <strong>{text('声音', 'Audio')}</strong>
+              {shot.audio_description}
+            </p>
+          )}
+          {shot.dialogue && (
+            <p>
+              <strong>{text('对白', 'Dialogue')}</strong>
+              {shot.dialogue.text}
+            </p>
+          )}
+        </div>
       </section>
     );
   }
@@ -1626,7 +1786,14 @@ function ResourceInspector({
         <span className="section-kicker">SCENE {selection.item.order + 1}</span>
         <h3>{selection.item.title}</h3>
         <p>{selection.item.story_goal || text('尚未设置场景目标', 'No story goal yet')}</p>
+        {selection.item.summary && <p>{selection.item.summary}</p>}
+        {selection.item.location_description && (
+          <p>
+            <strong>{text('地点', 'Location')}</strong> {selection.item.location_description}
+          </p>
+        )}
         <small>
+          {selection.item.characters.length} {text('个角色', 'characters')} ·{' '}
           {selection.item.shots.length} {text('个镜头', 'shots')}
         </small>
       </section>
@@ -1639,6 +1806,26 @@ function ResourceInspector({
         <p>
           {selection.item.identity.appearance || text('尚未定义外观', 'Appearance not defined')}
         </p>
+        {selection.item.role && (
+          <p>
+            <strong>{text('角色定位', 'Role')}</strong> {selection.item.role}
+          </p>
+        )}
+        {selection.item.motivation && (
+          <p>
+            <strong>{text('动机', 'Motivation')}</strong> {selection.item.motivation}
+          </p>
+        )}
+        {selection.item.identity.age_range && (
+          <p>
+            <strong>{text('年龄', 'Age')}</strong> {selection.item.identity.age_range}
+          </p>
+        )}
+        <div className="tag-list">
+          {selection.item.identity.distinguishing_features.map((feature) => (
+            <span key={feature}>{feature}</span>
+          ))}
+        </div>
       </section>
     );
   if (selection.kind === 'story')
@@ -1651,10 +1838,37 @@ function ResourceInspector({
             text('通过对话建立故事前提', 'Use the conversation to define the premise')}
         </p>
         <div className="tag-list">
+          {selection.item.brief.genres.map((genre) => (
+            <span key={`genre-${genre}`}>{genre}</span>
+          ))}
+          {selection.item.brief.tone.map((tone) => (
+            <span key={`tone-${tone}`}>{tone}</span>
+          ))}
           {selection.item.bible.themes.map((theme) => (
             <span key={theme}>{theme}</span>
           ))}
         </div>
+        {selection.item.brief.audience && (
+          <p>
+            <strong>{text('受众', 'Audience')}</strong> {selection.item.brief.audience}
+          </p>
+        )}
+        {selection.item.bible.world && (
+          <div className="inspector-detail-list">
+            <p>
+              <strong>{text('世界观', 'World')}</strong>
+              {selection.item.bible.world}
+            </p>
+          </div>
+        )}
+        {selection.item.bible.rules.length > 0 && (
+          <div className="inspector-detail-list">
+            <strong>{text('世界规则', 'World rules')}</strong>
+            {selection.item.bible.rules.map((rule) => (
+              <p key={rule}>• {rule}</p>
+            ))}
+          </div>
+        )}
       </section>
     );
   if (selection.kind === 'doctor')

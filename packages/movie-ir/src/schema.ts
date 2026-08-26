@@ -87,6 +87,8 @@ const entityHeaderSchema = z.object({
 export const characterSchema = entityHeaderSchema.extend({
   type: z.literal('character'),
   name: z.string().trim().min(1),
+  role: z.string().optional(),
+  motivation: z.string().optional(),
   identity: z
     .object({
       age_range: z.string().optional(),
@@ -103,6 +105,8 @@ export const sceneSchema = entityHeaderSchema.extend({
   title: z.string().trim().min(1),
   order: z.number().int().nonnegative(),
   story_goal: z.string().default(''),
+  summary: z.string().optional(),
+  location_description: z.string().optional(),
   location: entityIdSchema.optional(),
   characters: z.array(entityIdSchema).default([]),
   shots: z.array(entityIdSchema).default([]),
@@ -114,6 +118,11 @@ export const shotSchema = entityHeaderSchema.extend({
   scene: entityIdSchema,
   order: z.number().int().nonnegative(),
   duration_us: z.number().int().positive(),
+  visual_description: z.string().optional(),
+  action: z.string().optional(),
+  lighting: z.string().optional(),
+  composition: z.string().optional(),
+  audio_description: z.string().optional(),
   characters: z.array(entityIdSchema).default([]),
   camera: z
     .object({
@@ -183,21 +192,53 @@ export const agentActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('story.update'),
     premise: z.string().max(20_000).optional(),
+    genres: z.array(z.string().max(100)).max(20).optional(),
+    audience: z.string().max(500).optional(),
+    tone: z.array(z.string().max(100)).max(20).optional(),
     themes: z.array(z.string().max(200)).max(100).optional(),
     world: z.string().max(20_000).optional(),
     rules: z.array(z.string().max(500)).max(200).optional(),
   }),
   z.object({
+    type: z.literal('character.create'),
+    key: z
+      .string()
+      .regex(/^@[a-z][a-z0-9_]{1,63}$/)
+      .optional(),
+    name: z.string().trim().min(1).max(200),
+    role: z.string().max(1_000).optional(),
+    motivation: z.string().max(5_000).optional(),
+    age_range: z.string().max(200).optional(),
+    appearance: z.string().max(10_000).optional(),
+    distinguishing_features: z.array(z.string().max(500)).max(100).optional(),
+  }),
+  z.object({
     type: z.literal('scene.create'),
+    key: z
+      .string()
+      .regex(/^@[a-z][a-z0-9_]{1,63}$/)
+      .optional(),
     title: z.string().trim().min(1).max(200),
     story_goal: z.string().max(10_000).default(''),
+    summary: z.string().max(20_000).optional(),
+    location_description: z.string().max(10_000).optional(),
+    character_refs: z.array(z.string().min(1).max(200)).max(100).optional(),
   }),
   z.object({
     type: z.literal('shot.create'),
     scene_id: z.string().min(1),
     duration_us: z.number().int().positive(),
+    character_refs: z.array(z.string().min(1).max(200)).max(100).optional(),
     framing: z.string().max(200).optional(),
     movement: z.string().max(200).optional(),
+    visual_description: z.string().max(20_000).optional(),
+    action: z.string().max(10_000).optional(),
+    lighting: z.string().max(5_000).optional(),
+    composition: z.string().max(5_000).optional(),
+    audio_description: z.string().max(10_000).optional(),
+    performance_emotion: z.string().max(2_000).optional(),
+    dialogue_speaker_ref: z.string().min(1).max(200).optional(),
+    dialogue_text: z.string().max(10_000).optional(),
   }),
   z.object({
     type: z.literal('shot.update'),
@@ -206,6 +247,11 @@ export const agentActionSchema = z.discriminatedUnion('type', [
     framing: z.string().max(200).optional(),
     movement: z.string().max(200).optional(),
     performance_emotion: z.string().max(500).optional(),
+    visual_description: z.string().max(20_000).optional(),
+    action: z.string().max(10_000).optional(),
+    lighting: z.string().max(5_000).optional(),
+    composition: z.string().max(5_000).optional(),
+    audio_description: z.string().max(10_000).optional(),
   }),
 ]);
 
@@ -213,6 +259,72 @@ export const agentPlanSchema = z.object({
   summary: z.string().trim().min(1).max(500),
   actions: z.array(agentActionSchema).max(50),
 });
+
+const nullableStringArrayJsonSchema = (maxItems: number): Record<string, unknown> => ({
+  type: ['array', 'null'],
+  items: { type: 'string' },
+  maxItems,
+});
+
+const nullableStringJsonSchema: Record<string, unknown> = { type: ['string', 'null'] };
+const agentActionJsonProperties: Record<string, unknown> = {
+  type: {
+    type: 'string',
+    enum: ['story.update', 'character.create', 'scene.create', 'shot.create', 'shot.update'],
+  },
+  premise: nullableStringJsonSchema,
+  genres: nullableStringArrayJsonSchema(20),
+  audience: nullableStringJsonSchema,
+  tone: nullableStringArrayJsonSchema(20),
+  themes: nullableStringArrayJsonSchema(100),
+  world: nullableStringJsonSchema,
+  rules: nullableStringArrayJsonSchema(200),
+  key: { type: ['string', 'null'], pattern: '^@[a-z][a-z0-9_]{1,63}$' },
+  name: nullableStringJsonSchema,
+  role: nullableStringJsonSchema,
+  motivation: nullableStringJsonSchema,
+  age_range: nullableStringJsonSchema,
+  appearance: nullableStringJsonSchema,
+  distinguishing_features: nullableStringArrayJsonSchema(100),
+  title: nullableStringJsonSchema,
+  story_goal: nullableStringJsonSchema,
+  summary: nullableStringJsonSchema,
+  location_description: nullableStringJsonSchema,
+  character_refs: nullableStringArrayJsonSchema(100),
+  scene_id: nullableStringJsonSchema,
+  shot_id: nullableStringJsonSchema,
+  duration_us: { type: ['integer', 'null'], minimum: 1 },
+  framing: nullableStringJsonSchema,
+  movement: nullableStringJsonSchema,
+  visual_description: nullableStringJsonSchema,
+  action: nullableStringJsonSchema,
+  lighting: nullableStringJsonSchema,
+  composition: nullableStringJsonSchema,
+  audio_description: nullableStringJsonSchema,
+  performance_emotion: nullableStringJsonSchema,
+  dialogue_speaker_ref: nullableStringJsonSchema,
+  dialogue_text: nullableStringJsonSchema,
+};
+
+/** JSON Schema sent to local harnesses so their reply is directly parseable as an AgentPlan. */
+export const agentPlanJsonSchema: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['summary', 'actions'],
+  properties: {
+    summary: { type: 'string', minLength: 1, maxLength: 500 },
+    actions: {
+      type: 'array',
+      maxItems: 50,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: Object.keys(agentActionJsonProperties),
+        properties: agentActionJsonProperties,
+      },
+    },
+  },
+};
 
 export const movieEntitySchema = z.discriminatedUnion('type', [
   characterSchema,

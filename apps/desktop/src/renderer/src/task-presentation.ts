@@ -10,24 +10,46 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function summaryFromText(value: string): string {
   const trimmed = value.trim();
-  const firstBrace = trimmed.indexOf('{');
-  const lastBrace = trimmed.lastIndexOf('}');
-  const candidates = [
-    trimmed,
-    firstBrace >= 0 && lastBrace > firstBrace ? trimmed.slice(firstBrace, lastBrace + 1) : '',
-  ];
+  const candidates = [trimmed, ...extractJsonObjects(trimmed)];
+  let summary: string | undefined;
   for (const candidate of candidates) {
     if (!candidate) continue;
     try {
       const parsed = record(JSON.parse(candidate));
       if (typeof parsed?.summary === 'string' && parsed.summary.trim()) {
-        return parsed.summary.trim();
+        summary = parsed.summary.trim();
       }
     } catch {
       // A normal conversational response is not JSON.
     }
   }
-  return trimmed;
+  return summary ?? trimmed;
+}
+
+function extractJsonObjects(text: string): string[] {
+  const objects: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) objects.push(text.slice(start, index + 1));
+    }
+  }
+  return objects;
 }
 
 export function taskResponseText(task: Task, locale: UiLocale): string | undefined {

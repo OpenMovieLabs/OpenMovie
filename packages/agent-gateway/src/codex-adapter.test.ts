@@ -36,6 +36,7 @@ lines.on('line', (line) => {
   if (message.method === 'turn/start') {
     send({ id: message.id, result: { turn: { id: active.turnId } } });
     const text = message.params.input?.[0]?.text ?? '';
+    if (text.includes('require schema') && message.params.outputSchema?.properties?.summary?.type !== 'string') return setTimeout(() => complete('', 'failed', 'missing output schema'), 5);
     if (text.includes('wait forever')) return;
     if (text.includes('fail this turn')) return setTimeout(() => complete('', 'failed', 'fixture failure'), 5);
     if (dynamic) return setTimeout(() => send({ id: 99, method: 'item/tool/call', params: { threadId: active.threadId, tool: 'openmovie_project_summary', arguments: { compact: true } } }), 5);
@@ -86,6 +87,20 @@ describe('CodexAppServerAdapter', () => {
       status: 'completed',
       text: 'Fixture completed',
     });
+  });
+
+  it('sends a structured output schema with a turn', async () => {
+    await expect(
+      adapter.runTurn({
+        cwd: process.cwd(),
+        text: 'require schema',
+        outputSchema: {
+          type: 'object',
+          properties: { summary: { type: 'string' } },
+        },
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toMatchObject({ status: 'completed' });
   });
 
   it('routes dynamic tool calls through the thread handler', async () => {

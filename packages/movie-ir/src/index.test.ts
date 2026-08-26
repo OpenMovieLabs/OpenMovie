@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  agentPlanJsonSchema,
   agentPlanSchema,
   createId,
   createProjectManifest,
@@ -9,6 +10,13 @@ import {
 } from './index.js';
 
 describe('Movie IR', () => {
+  it('exposes a Codex-compatible strict JSON schema without unsupported unions', () => {
+    const serialized = JSON.stringify(agentPlanJsonSchema);
+    expect(serialized).not.toContain('oneOf');
+    expect(serialized).toContain('character.create');
+    expect(serialized).toContain('visual_description');
+  });
+
   it('round-trips a project manifest through stable YAML', () => {
     const original = createProjectManifest('A Film', 'zh-CN');
     const first = serializeProjectManifest(original);
@@ -36,16 +44,24 @@ describe('Movie IR', () => {
       agentPlanSchema.parse({
         summary: 'Create an opening scene and its first shot',
         actions: [
+          {
+            type: 'character.create',
+            key: '@lead',
+            name: 'Lin',
+            appearance: 'Red raincoat',
+          },
           { type: 'scene.create', title: 'Arrival', story_goal: 'Introduce the city' },
           {
             type: 'shot.create',
             scene_id: '@last_scene',
             duration_us: 4_000_000,
+            character_refs: ['@lead'],
             framing: 'wide',
+            visual_description: 'Lin enters the flooded station.',
           },
         ],
       }).actions,
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(() =>
       agentPlanSchema.parse({
         summary: 'Unsafe plan',

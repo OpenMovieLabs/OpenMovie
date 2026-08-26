@@ -1397,6 +1397,29 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
+.inspector-detail-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.inspector-detail-list p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.inspector-detail-list strong,
+.inspector-card > p > strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .doctor-card.ok {
   border-color: rgb(214 247 94 / 20%);
 }

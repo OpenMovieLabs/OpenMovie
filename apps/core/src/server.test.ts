@@ -13,7 +13,7 @@ import {
 } from '@openmovie/contracts';
 import { FfmpegTimelineRenderer } from '@openmovie/media-engine';
 
-import { CoreServer } from './server.js';
+import { CoreServer, parseAgentPlanText } from './server.js';
 
 let commandSequence = 0;
 
@@ -28,6 +28,35 @@ async function sendCore(
 }
 
 describe('CoreServer', () => {
+  it('normalizes legacy harness actions and rejects malformed structured plans', () => {
+    expect(
+      parseAgentPlanText(
+        '{"summary":"Add a shot","actions":[{"action":"shot.create","scene_id":"@last_scene","duration_seconds":4,"shot_size":"wide","camera_movement":"push in"}]}',
+      ),
+    ).toMatchObject({
+      actions: [
+        {
+          type: 'shot.create',
+          duration_us: 4_000_000,
+          framing: 'wide',
+          movement: 'push in',
+        },
+      ],
+    });
+    expect(() =>
+      parseAgentPlanText('{"summary":"Broken","actions":[{"type":"character.create"}]}'),
+    ).toThrow(/invalid OpenMovie plan.*name/i);
+    expect(parseAgentPlanText('A normal conversational answer.')).toBeNull();
+    expect(
+      parseAgentPlanText(
+        '{"summary":"I will inspect the project","actions":[]}\n\n{"summary":"Created the scene","actions":[{"type":"scene.create","title":"Harbor","story_goal":"Reveal the storm"}]}',
+      ),
+    ).toMatchObject({
+      summary: 'Created the scene',
+      actions: [{ type: 'scene.create', title: 'Harbor' }],
+    });
+  });
+
   it('initializes a compatible client', async () => {
     const response = await new CoreServer().handle({
       id: 'init-1',

@@ -435,4 +435,92 @@ describe('ProjectStore', () => {
     expect(project.proposals.list('pending')[0]?.id).toBe(proposal.id);
     await project.close();
   });
+
+  it('applies a complete story, cast, scene, and storyboard plan atomically', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'openmovie-complete-plan-'));
+    const project = await ProjectStore.create(join(parent, 'movie'), { title: 'Complete Plan' });
+    const baseRevisionId = project.revisions.currentRevisionId();
+    if (!baseRevisionId) throw new Error('Expected initial Revision');
+    const proposal = project.proposals.create({
+      baseRevisionId,
+      authorId: 'direct_agent',
+      plan: {
+        summary: 'Establish the complete opening sequence',
+        actions: [
+          {
+            type: 'story.update',
+            premise: 'A courier discovers a city-sized deception.',
+            genres: ['mystery'],
+            audience: 'Adults',
+            tone: ['tense'],
+            world: 'A flooded city survives behind projected skies.',
+            themes: ['identity'],
+            rules: ['Projectors cannot reproduce lightning.'],
+          },
+          {
+            type: 'character.create',
+            key: '@courier',
+            name: 'Mara',
+            role: 'Protagonist',
+            motivation: 'Find her missing brother',
+            age_range: '30s',
+            appearance: 'Weathered yellow coat',
+            distinguishing_features: ['Silver compass'],
+          },
+          {
+            type: 'scene.create',
+            key: '@harbor',
+            title: 'False Lightning',
+            story_goal: 'Reveal the first flaw in the city illusion',
+            location_description: 'A night harbor beneath an artificial sky',
+            character_refs: ['@courier'],
+          },
+          {
+            type: 'shot.create',
+            scene_id: '@harbor',
+            duration_us: 4_000_000,
+            character_refs: ['@courier'],
+            framing: 'wide',
+            movement: 'slow push in',
+            visual_description: 'Mara stands as lightning tears the painted sky.',
+            action: 'She opens the compass.',
+            lighting: 'Cold blue lightning',
+            composition: 'Mara isolated in the lower third',
+            audio_description: 'Distant thunder and rigging',
+            performance_emotion: 'suspicious',
+            dialogue_speaker_ref: '@courier',
+            dialogue_text: 'That flash was wrong.',
+          },
+        ],
+      },
+    });
+
+    await project.proposals.accept(proposal.id, baseRevisionId);
+    const story = await project.movies.getStory();
+    const characters = await project.movies.list('character');
+    const scenes = await project.movies.list('scene');
+    const shots = await project.movies.list('shot');
+    expect(story.brief).toMatchObject({
+      premise: 'A courier discovers a city-sized deception.',
+      genres: ['mystery'],
+      audience: 'Adults',
+      tone: ['tense'],
+    });
+    expect(story.bible).toMatchObject({
+      world: 'A flooded city survives behind projected skies.',
+      themes: ['identity'],
+    });
+    expect(characters[0]).toMatchObject({ name: 'Mara', role: 'Protagonist' });
+    expect(scenes[0]).toMatchObject({
+      title: 'False Lightning',
+      characters: [(characters[0] as { id: string }).id],
+    });
+    expect(shots[0]).toMatchObject({
+      visual_description: 'Mara stands as lightning tears the painted sky.',
+      action: 'She opens the compass.',
+      dialogue: { text: 'That flash was wrong.' },
+      characters: [(characters[0] as { id: string }).id],
+    });
+    await project.close();
+  });
 });

@@ -27,7 +27,12 @@ import {
   type DynamicToolSpec,
 } from '@openmovie/agent-gateway';
 import { TaskEngine, type TaskPersistence } from '@openmovie/task-engine';
-import { agentPlanSchema, movieEntitySchema, type AgentPlan } from '@openmovie/movie-ir';
+import {
+  agentPlanJsonSchema,
+  agentPlanSchema,
+  movieEntitySchema,
+  type AgentPlan,
+} from '@openmovie/movie-ir';
 import {
   BuiltInTakeEvaluator,
   compareEvaluationRuns,
@@ -46,7 +51,7 @@ import packageMetadata from '../package.json' with { type: 'json' };
 const startedAt = new Date();
 const coreVersion = packageMetadata.version;
 const openMoviePlanPrompt =
-  'OPENMOVIE_PLAN_V1. Return only one JSON object with summary and actions. The summary is the natural-language answer shown directly to the user: make it useful and conversational even when actions is empty. Allowed actions: story.update; scene.create; shot.create (scene_id may be @last_scene); shot.update. Use snake_case fields. Use actions: [] when no Movie IR change is needed. Never include markdown fences and never modify project files directly.';
+  'OPENMOVIE_PLAN_V2. Return one object with summary and actions. The summary is the useful natural-language answer shown to the user. Use story.update for premise, genres, audience, tone, themes, world and rules; character.create for every named character; scene.create for story structure; shot.create for concrete storyboard shots; shot.update for an existing shot. Give new characters and scenes stable @keys and reference them with character_refs and scene_id. scene_id may also be @last_scene. Every shot should include a specific visual_description, action, framing, movement, lighting, composition and audio_description when the user asks for a storyboard. Durations are integer microseconds. Use actions: [] only when no Movie IR change is requested. Never modify project files directly.';
 
 function failure(id: string, code: string, message: string, retryable = false): CoreResponse {
   return { id, ok: false, error: { code, message, retryable } };
@@ -93,6 +98,7 @@ export class CoreServer {
             `User goal: ${context.task.goal}${targetContext}`,
           ].join('\n\n'),
           signal: context.signal,
+          outputSchema: agentPlanJsonSchema,
           dynamicTools: this.codexDynamicTools().filter(
             (tool) =>
               tool.name === 'openmovie_project_summary' || tool.name === 'openmovie_entity_list',
@@ -1358,21 +1364,109 @@ async function ensureMediaShot(
   return shot.entity.id;
 }
 
-function parseAgentPlanText(text: string): AgentPlan | null {
+export function parseAgentPlanText(text: string): AgentPlan | null {
   const trimmed = text.trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1];
-  const firstBrace = trimmed.indexOf('{');
-  const lastBrace = trimmed.lastIndexOf('}');
-  const embedded =
-    firstBrace >= 0 && lastBrace > firstBrace ? trimmed.slice(firstBrace, lastBrace + 1) : '';
-  for (const candidate of [trimmed, fenced, embedded]) {
+  let structuredError: string | undefined;
+  let accepted: AgentPlan | null = null;
+  const candidates = [...new Set([trimmed, fenced, ...extractJsonObjects(trimmed)])];
+  for (const candidate of candidates) {
     if (!candidate) continue;
     try {
-      const parsed = agentPlanSchema.safeParse(JSON.parse(candidate));
-      if (parsed.success) return parsed.data;
+      const value: unknown = JSON.parse(candidate);
+      const parsed = agentPlanSchema.safeParse(value);
+      if (parsed.success) {
+        accepted = parsed.data;
+        continue;
+      }
+      const normalized = agentPlanSchema.safeParse(normalizeAgentPlan(value));
+      if (normalized.success) {
+        accepted = normalized.data;
+        continue;
+      }
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        'actions' in value &&
+        Array.isArray((value as { actions?: unknown }).actions)
+      ) {
+        structuredError = normalized.error.issues
+          .slice(0, 3)
+          .map((issue) => `${issue.path.join('.') || 'plan'}: ${issue.message}`)
+          .join('; ');
+      }
     } catch {
       // Try the next safe JSON candidate.
     }
   }
+  if (accepted) return accepted;
+  if (structuredError) {
+    throw new Error(`Codex returned an invalid OpenMovie plan: ${structuredError}`);
+  }
   return null;
+}
+
+function extractJsonObjects(text: string): string[] {
+  const objects: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') {
+      quoted = true;
+      continue;
+    }
+    if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+      continue;
+    }
+    if (character !== '}' || depth === 0) continue;
+    depth -= 1;
+    if (depth === 0 && start >= 0) {
+      objects.push(text.slice(start, index + 1));
+      start = -1;
+    }
+  }
+  return objects;
+}
+
+function normalizeAgentPlan(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.actions)) return value;
+  return {
+    ...record,
+    actions: (record.actions as unknown[]).map((candidate: unknown) => {
+      if (typeof candidate !== 'object' || candidate === null) return candidate;
+      const action = Object.fromEntries(
+        Object.entries(candidate as Record<string, unknown>).filter(([, item]) => item !== null),
+      );
+      const type = action.type ?? action.action ?? action.action_type;
+      const durationUs =
+        action.duration_us ??
+        (typeof action.duration_seconds === 'number'
+          ? Math.round(action.duration_seconds * 1_000_000)
+          : undefined);
+      return {
+        ...action,
+        type,
+        ...(durationUs === undefined ? {} : { duration_us: durationUs }),
+        ...(action.framing === undefined && typeof action.shot_size === 'string'
+          ? { framing: action.shot_size }
+          : {}),
+        ...(action.movement === undefined && typeof action.camera_movement === 'string'
+          ? { movement: action.camera_movement }
+          : {}),
+      };
+    }),
+  };
 }
