@@ -22,6 +22,7 @@ import {
   Search,
   Send,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   Square,
   UserRound,
@@ -157,6 +158,7 @@ function applicationErrorText(error: string, locale: UiLocale): string {
 export function App(): React.JSX.Element {
   const initialized = useRef(false);
   const threadEnd = useRef<HTMLDivElement>(null);
+  const composerInput = useRef<HTMLTextAreaElement>(null);
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' });
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
@@ -181,6 +183,7 @@ export function App(): React.JSX.Element {
   const [plannerProviderId, setPlannerProviderId] = useState('fake');
   const [mediaProviderId, setMediaProviderId] = useState('fake');
   const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
+  const [showComposerSettings, setShowComposerSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -422,6 +425,11 @@ export function App(): React.JSX.Element {
     });
   };
 
+  const editPrompt = (prompt: string): void => {
+    setComposer(prompt);
+    window.requestAnimationFrame(() => composerInput.current?.focus());
+  };
+
   const approveTask = (taskId: string): void => {
     void run(async () => {
       const result = await window.openMovie.approveTask(taskId);
@@ -513,6 +521,10 @@ export function App(): React.JSX.Element {
   const filteredTakes = takes.filter((take) =>
     `${take.id} ${take.shotId}`.toLowerCase().includes(query),
   );
+  const hasActiveTasks = tasks.some((task) => activeTaskStatuses.has(task.status));
+  const hasProjectResources = shots.length > 0 || takes.length > 0 || renders.length > 0;
+  const hasSelectedTake = shots.some((shot) => Boolean(shot.selected_take));
+  const projectNavigationLocked = busy || hasActiveTasks;
   const sidebarProjects = project
     ? [
         {
@@ -537,7 +549,16 @@ export function App(): React.JSX.Element {
             <MoreHorizontal size={17} />
           </button>
         </div>
-        <button className="new-project-button" onClick={() => setShowCreate(true)}>
+        <button
+          className="new-project-button"
+          disabled={projectNavigationLocked}
+          title={
+            projectNavigationLocked
+              ? text('请先等待当前任务结束或停止任务', 'Wait for or stop the current task first')
+              : undefined
+          }
+          onClick={() => setShowCreate(true)}
+        >
           <Plus size={16} /> {text('新建电影', 'New movie')}
         </button>
         <div className="projects-area">
@@ -551,6 +572,15 @@ export function App(): React.JSX.Element {
               >
                 <button
                   className="project-row"
+                  disabled={!isCurrent && projectNavigationLocked}
+                  title={
+                    !isCurrent && projectNavigationLocked
+                      ? text(
+                          '当前任务运行期间不能切换工程',
+                          'Projects cannot be switched while a task is running',
+                        )
+                      : sidebarProject.title
+                  }
                   onClick={() => {
                     if (isCurrent && project) {
                       setSelection({ kind: 'project', item: project });
@@ -664,7 +694,9 @@ export function App(): React.JSX.Element {
                       <span>
                         {branches.find((branch) => branch.current)?.name ?? project.currentBranch}
                       </span>
-                      <small>{revisions.length}</small>
+                      <small>
+                        {revisions.length} {text('个版本', 'revisions')}
+                      </small>
                     </div>
                   </div>
                 )}
@@ -676,7 +708,16 @@ export function App(): React.JSX.Element {
           )}
         </div>
         <div className="sidebar-footer">
-          <button className="tree-row" onClick={openProject}>
+          <button
+            className="tree-row"
+            disabled={projectNavigationLocked}
+            title={
+              projectNavigationLocked
+                ? text('请先等待当前任务结束或停止任务', 'Wait for or stop the current task first')
+                : undefined
+            }
+            onClick={openProject}
+          >
             <FolderOpen size={15} /> {text('打开工程', 'Open project')}
           </button>
           <button className="tree-row" onClick={() => setShowSettings(true)}>
@@ -822,6 +863,11 @@ export function App(): React.JSX.Element {
                               <Square size={12} /> {text('停止', 'Stop')}
                             </button>
                           )}
+                          {task.status === 'failed' && (
+                            <button className="text-button" onClick={() => editPrompt(task.goal)}>
+                              <RotateCcw size={12} /> {text('修改后重试', 'Edit and retry')}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </article>
@@ -877,6 +923,7 @@ export function App(): React.JSX.Element {
         <footer className="composer-area">
           <div className={project ? 'composer' : 'composer disabled'}>
             <textarea
+              ref={composerInput}
               value={composer}
               disabled={!project || busy}
               placeholder={
@@ -909,31 +956,49 @@ export function App(): React.JSX.Element {
                     ))}
                   </select>
                 </label>
-                <label>
-                  {mediaKind === 'image' ? <ImageIcon size={13} /> : <Video size={13} />}
-                  <select
-                    value={mediaKind}
-                    onChange={(event) => setMediaKind(event.target.value as 'image' | 'video')}
-                    disabled={!project}
-                  >
-                    <option value="image">{text('图片', 'Image')}</option>
-                    <option value="video">{text('视频', 'Video')}</option>
-                  </select>
-                </label>
-                <label>
-                  <Sparkles size={13} />
-                  <select
-                    value={mediaProviderId}
-                    onChange={(event) => setMediaProviderId(event.target.value)}
-                    disabled={!project}
-                  >
-                    {mediaProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
-                        {provider.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <button
+                  className={
+                    showComposerSettings
+                      ? 'composer-settings-toggle active'
+                      : 'composer-settings-toggle'
+                  }
+                  aria-expanded={showComposerSettings}
+                  title={text('生成设置', 'Generation settings')}
+                  disabled={!project}
+                  onClick={() => setShowComposerSettings((value) => !value)}
+                >
+                  <SlidersHorizontal size={12} />
+                  {text('生成设置', 'Generation')}
+                </button>
+                {showComposerSettings && (
+                  <div className="composer-advanced-options">
+                    <label>
+                      {mediaKind === 'image' ? <ImageIcon size={13} /> : <Video size={13} />}
+                      <select
+                        value={mediaKind}
+                        onChange={(event) => setMediaKind(event.target.value as 'image' | 'video')}
+                        disabled={!project}
+                      >
+                        <option value="image">{text('图片', 'Image')}</option>
+                        <option value="video">{text('视频', 'Video')}</option>
+                      </select>
+                    </label>
+                    <label>
+                      <Sparkles size={13} />
+                      <select
+                        value={mediaProviderId}
+                        onChange={(event) => setMediaProviderId(event.target.value)}
+                        disabled={!project}
+                      >
+                        {mediaProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
                 {selectedShotId && (
                   <span className="target-chip">
                     <Clapperboard size={12} /> {selectedShotId}
@@ -1043,14 +1108,16 @@ export function App(): React.JSX.Element {
           </div>
         ) : (
           <div className="resource-scroll">
-            <div className="resource-search">
-              <Search size={14} />
-              <input
-                value={resourceSearch}
-                placeholder={text('搜索工程资源', 'Search project resources')}
-                onChange={(event) => setResourceSearch(event.target.value)}
-              />
-            </div>
+            {hasProjectResources && (
+              <div className="resource-search">
+                <Search size={14} />
+                <input
+                  value={resourceSearch}
+                  placeholder={text('搜索工程资源', 'Search project resources')}
+                  onChange={(event) => setResourceSearch(event.target.value)}
+                />
+              </div>
+            )}
             {selection && (
               <ResourceInspector
                 selection={selection}
@@ -1058,22 +1125,39 @@ export function App(): React.JSX.Element {
                 onSelectTake={selectTake}
               />
             )}
-            <section className="resource-section">
-              <div className="section-title">
-                <span>{text('媒体', 'MEDIA')}</span>
-                <small>{takes.length + renders.length}</small>
-              </div>
-              {takes.length === 0 && renders.length === 0 ? (
-                <div className="empty-resource-card">
-                  <ImageIcon size={19} />
-                  <span>
-                    {text(
-                      '生成的图片和视频会显示在这里',
-                      'Generated images and videos appear here',
-                    )}
-                  </span>
+            {!hasProjectResources && (
+              <div className="workspace-empty-state">
+                <div className="workspace-empty-icon">
+                  <Sparkles size={20} />
                 </div>
-              ) : (
+                <strong>{text('从对话开始创作', 'Start creating in chat')}</strong>
+                <p>
+                  {text(
+                    '描述故事、画面或一个镜头。OpenMovie 会先给出可审查的工程修改，再生成媒体资源。',
+                    'Describe a story, image, or shot. OpenMovie will propose reviewable project changes before generating media.',
+                  )}
+                </p>
+                <button
+                  className="secondary-button"
+                  onClick={() =>
+                    editPrompt(
+                      text(
+                        '帮我设计开场场景，并拆分成三个连续镜头',
+                        'Design the opening scene and break it into three continuous shots',
+                      ),
+                    )
+                  }
+                >
+                  <MessageSquare size={14} /> {text('填写创作目标', 'Draft a creative goal')}
+                </button>
+              </div>
+            )}
+            {(takes.length > 0 || renders.length > 0) && (
+              <section className="resource-section">
+                <div className="section-title">
+                  <span>{text('媒体', 'MEDIA')}</span>
+                  <small>{takes.length + renders.length}</small>
+                </div>
                 <div className="media-grid">
                   {filteredTakes.map((take) => {
                     const url = artifactUrl(take.artifact.objectUri);
@@ -1112,48 +1196,70 @@ export function App(): React.JSX.Element {
                     </button>
                   ))}
                 </div>
-              )}
-            </section>
-            <section className="resource-section">
-              <div className="section-title">
-                <span>{text('镜头', 'SHOTS')}</span>
-                <small>{shots.length}</small>
-              </div>
-              <div className="shot-grid">
-                {filteredShots.map((shot, index) => (
-                  <button
-                    key={shot.id}
-                    className={
-                      selection?.kind === 'shot' && selection.item.id === shot.id
-                        ? 'shot-card selected'
-                        : 'shot-card'
-                    }
-                    onClick={() => setSelection({ kind: 'shot', item: shot })}
-                  >
-                    <div className="shot-number">{String(index + 1).padStart(2, '0')}</div>
-                    <div>
-                      <strong>{shot.camera.framing || text('未设置景别', 'No framing')}</strong>
-                      <small>
-                        {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
-                        {takes.filter((take) => take.shotId === shot.id).length} Takes
-                      </small>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
+              </section>
+            )}
+            {shots.length > 0 && (
+              <section className="resource-section">
+                <div className="section-title">
+                  <span>{text('镜头', 'SHOTS')}</span>
+                  <small>{shots.length}</small>
+                </div>
+                <div className="shot-grid">
+                  {filteredShots.map((shot, index) => (
+                    <button
+                      key={shot.id}
+                      className={
+                        selection?.kind === 'shot' && selection.item.id === shot.id
+                          ? 'shot-card selected'
+                          : 'shot-card'
+                      }
+                      onClick={() => setSelection({ kind: 'shot', item: shot })}
+                    >
+                      <div className="shot-number">{String(index + 1).padStart(2, '0')}</div>
+                      <div>
+                        <strong>{shot.camera.framing || text('未设置景别', 'No framing')}</strong>
+                        <small>
+                          {(shot.duration_us / 1_000_000).toFixed(1)}s ·{' '}
+                          {takes.filter((take) => take.shotId === shot.id).length} Takes
+                        </small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
             <section className="resource-section compact-section">
               <div className="section-title">
                 <span>{text('工程操作', 'PROJECT ACTIONS')}</span>
               </div>
               <div className="project-actions-grid">
-                <button className="secondary-button" onClick={assembleTimeline}>
+                <button
+                  className="secondary-button"
+                  disabled={busy || shots.length === 0}
+                  title={
+                    shots.length === 0
+                      ? text('先通过对话创建镜头', 'Create shots in chat first')
+                      : undefined
+                  }
+                  onClick={assembleTimeline}
+                >
                   <Clapperboard size={14} /> {text('组装时间线', 'Assemble timeline')}
                 </button>
-                <button className="secondary-button" onClick={renderTimeline}>
+                <button
+                  className="secondary-button"
+                  disabled={busy || shots.length === 0 || !hasSelectedTake}
+                  title={
+                    shots.length === 0
+                      ? text('先通过对话创建镜头', 'Create shots in chat first')
+                      : !hasSelectedTake
+                        ? text('先为镜头选择一个 Take', 'Select a Take for a shot first')
+                        : undefined
+                  }
+                  onClick={renderTimeline}
+                >
                   <Video size={14} /> {text('渲染成片', 'Render cut')}
                 </button>
-                <button className="secondary-button" onClick={runDoctor}>
+                <button className="secondary-button" disabled={busy} onClick={runDoctor}>
                   <Check size={14} /> {text('检查工程', 'Run checks')}
                 </button>
               </div>

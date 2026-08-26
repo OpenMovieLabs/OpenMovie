@@ -222,6 +222,12 @@ textarea:focus-visible {
   border-color: #404341;
 }
 
+.new-project-button:disabled:hover,
+.secondary-button:disabled:hover {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
 .new-project-button svg,
 .primary-button svg,
 .secondary-button svg,
@@ -942,7 +948,8 @@ textarea:focus-visible {
   overflow: hidden;
 }
 
-.composer-options > label {
+.composer-options > label,
+.composer-advanced-options > label {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -950,13 +957,15 @@ textarea:focus-visible {
   color: var(--faint);
 }
 
-.composer-options > label svg {
+.composer-options > label svg,
+.composer-advanced-options > label svg {
   flex: 0 0 auto;
   width: 11px;
   height: 11px;
 }
 
-.composer-options > label select {
+.composer-options > label select,
+.composer-advanced-options > label select {
   max-width: 105px;
   padding: 3px 16px 3px 3px;
   border: 0;
@@ -964,6 +973,34 @@ textarea:focus-visible {
   color: var(--muted);
   background: transparent;
   font-size: 9px;
+}
+
+.composer-settings-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 25px;
+  padding: 0 7px;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  color: var(--faint);
+  background: transparent;
+  font-size: 9px;
+}
+
+.composer-settings-toggle:hover,
+.composer-settings-toggle.active {
+  color: var(--text);
+  background: var(--panel-raised);
+}
+
+.composer-advanced-options {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding-left: 5px;
+  border-left: 1px solid var(--border-soft);
 }
 
 .target-chip {
@@ -1127,6 +1164,47 @@ textarea:focus-visible {
   color: var(--text);
   background: transparent;
   font-size: 10px;
+}
+
+.workspace-empty-state {
+  display: grid;
+  min-height: 190px;
+  margin-bottom: 13px;
+  padding: 28px;
+  place-items: center;
+  align-content: center;
+  border: 1px dashed #343736;
+  border-radius: 10px;
+  color: var(--muted);
+  background: linear-gradient(145deg, rgb(214 247 94 / 3%), transparent 52%), var(--panel);
+  text-align: center;
+}
+
+.workspace-empty-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 11px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--accent);
+  background: rgb(214 247 94 / 9%);
+}
+
+.workspace-empty-state > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.workspace-empty-state > p {
+  max-width: 390px;
+  margin: 7px 0 16px;
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.workspace-empty-state .secondary-button {
+  min-height: 31px;
 }
 
 .inspector-card,
