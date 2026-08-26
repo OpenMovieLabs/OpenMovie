@@ -51,6 +51,7 @@ import type {
   StoryDocuments,
 } from '../../preload/index.js';
 import { detectUiLocale, type UiLocale } from './i18n.js';
+import { ensureActiveProject, reconcileRecentProjects } from './project-list.js';
 
 type RuntimeState =
   { kind: 'loading' } | { kind: 'ready'; health: CoreHealth } | { kind: 'error'; message: string };
@@ -335,7 +336,7 @@ export function App(): React.JSX.Element {
       .then(([, health, nextHarnesses, recents, updates]) => {
         setRuntime({ kind: 'ready', health });
         setHarnesses(nextHarnesses);
-        setRecentProjects(recents);
+        setRecentProjects((current) => reconcileRecentProjects(current, recents));
         setUpdateState(updates);
         const preferred = nextHarnesses.find(
           (item) => item.available && (item.id === 'codex' || item.id === 'claude_code'),
@@ -384,7 +385,8 @@ export function App(): React.JSX.Element {
       if (!created) return;
       setShowCreate(false);
       setSelection(null);
-      setRecentProjects(await window.openMovie.listRecentProjects());
+      const recents = await window.openMovie.listRecentProjects();
+      setRecentProjects((current) => reconcileRecentProjects(current, recents));
       await loadProject(created);
     });
   };
@@ -394,7 +396,8 @@ export function App(): React.JSX.Element {
       const opened = await window.openMovie.openProject();
       if (!opened) return;
       setSelection(null);
-      setRecentProjects(await window.openMovie.listRecentProjects());
+      const recents = await window.openMovie.listRecentProjects();
+      setRecentProjects((current) => reconcileRecentProjects(current, recents));
       await loadProject(opened);
     });
   };
@@ -403,7 +406,8 @@ export function App(): React.JSX.Element {
     void run(async () => {
       setSelection(null);
       const opened = await window.openMovie.openRecentProject(path);
-      setRecentProjects(await window.openMovie.listRecentProjects());
+      const recents = await window.openMovie.listRecentProjects();
+      setRecentProjects((current) => reconcileRecentProjects(current, recents));
       await loadProject(opened);
     });
   };
@@ -525,17 +529,7 @@ export function App(): React.JSX.Element {
   const hasProjectResources = shots.length > 0 || takes.length > 0 || renders.length > 0;
   const hasSelectedTake = shots.some((shot) => Boolean(shot.selected_take));
   const projectNavigationLocked = busy || hasActiveTasks;
-  const sidebarProjects = project
-    ? [
-        {
-          path: project.root,
-          title: project.title,
-          lastOpenedAt:
-            recentProjects.find((recent) => recent.path === project.root)?.lastOpenedAt ?? '',
-        },
-        ...recentProjects.filter((recent) => recent.path !== project.root),
-      ]
-    : recentProjects;
+  const sidebarProjects = ensureActiveProject(recentProjects, project);
 
   return (
     <div className="studio-shell" aria-busy={busy}>
@@ -572,6 +566,8 @@ export function App(): React.JSX.Element {
               >
                 <button
                   className="project-row"
+                  aria-current={isCurrent ? 'page' : undefined}
+                  aria-expanded={isCurrent}
                   disabled={!isCurrent && projectNavigationLocked}
                   title={
                     !isCurrent && projectNavigationLocked
@@ -597,7 +593,9 @@ export function App(): React.JSX.Element {
                     <small>
                       {isCurrent
                         ? text('正在编辑', 'Editing')
-                        : new Date(sidebarProject.lastOpenedAt).toLocaleDateString()}
+                        : sidebarProject.lastOpenedAt
+                          ? new Date(sidebarProject.lastOpenedAt).toLocaleDateString()
+                          : text('已打开', 'Opened')}
                     </small>
                   </span>
                 </button>

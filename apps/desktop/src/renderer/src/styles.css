@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   color: #e8e8e5;
   background: #111212;
   font-family:
@@ -17,12 +18,15 @@
   --border: #2b2d2d;
   --border-soft: #232525;
   --text: #e8e8e5;
-  --muted: #929793;
-  --faint: #686d69;
+  --muted: #a3a8a4;
+  --faint: #7f8581;
   --accent: #d6f75e;
   --accent-dark: #b6d83b;
   --danger: #e97d73;
   --blue: #78a8ff;
+  --button: #252727;
+  --button-hover: #303332;
+  --button-border: #3a3d3c;
 }
 
 * {
@@ -41,6 +45,7 @@ body,
 body {
   min-width: 1040px;
   background: var(--bg);
+  font-size: 14px;
 }
 
 button,
@@ -53,6 +58,8 @@ textarea {
 
 button {
   border: 0;
+  appearance: none;
+  background: transparent;
 }
 
 button,
@@ -94,7 +101,7 @@ textarea:focus-visible {
 
 .studio-shell {
   display: grid;
-  grid-template-columns: 236px minmax(430px, 0.95fr) minmax(430px, 1.15fr);
+  grid-template-columns: 258px minmax(430px, 0.95fr) minmax(430px, 1.15fr);
   width: 100%;
   height: 100vh;
   min-width: 1040px;
@@ -136,7 +143,7 @@ textarea:focus-visible {
   min-height: 34px;
   margin-bottom: 16px;
   padding: 0 4px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -206,26 +213,26 @@ textarea:focus-visible {
 
 .new-project-button {
   width: 100%;
-  min-height: 36px;
-  padding: 0 11px;
+  min-height: 40px;
+  padding: 0 12px;
   justify-content: flex-start;
   color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  font-size: 12px;
+  background: var(--button);
+  border: 1px solid var(--button-border);
+  font-size: 13px;
   font-weight: 600;
 }
 
 .new-project-button:hover,
 .secondary-button:hover {
-  background: #262828;
-  border-color: #404341;
+  background: var(--button-hover);
+  border-color: #4a4e4c;
 }
 
 .new-project-button:disabled:hover,
 .secondary-button:disabled:hover {
-  background: var(--panel);
-  border-color: var(--border);
+  background: var(--button);
+  border-color: var(--button-border);
 }
 
 .new-project-button svg,
@@ -240,7 +247,7 @@ textarea:focus-visible {
 .section-kicker,
 .eyebrow {
   color: var(--faint);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -269,16 +276,17 @@ textarea:focus-visible {
 
 .sidebar-project.current {
   padding-bottom: 5px;
-  background: rgb(27 29 28 / 72%);
+  background: #1b1d1c;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 3%);
 }
 
 .project-row {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 38px;
-  gap: 6px;
-  padding: 5px 7px;
+  min-height: 44px;
+  gap: 8px;
+  padding: 6px 8px;
   border-radius: 7px;
   color: var(--muted);
   background: transparent;
@@ -288,19 +296,19 @@ textarea:focus-visible {
 .project-row:hover,
 .sidebar-project.current > .project-row {
   color: var(--text);
-  background: var(--panel-raised);
+  background: #272a28;
 }
 
 .project-row > svg {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   color: var(--faint);
 }
 
 .project-row > svg:nth-child(2) {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .project-row > span {
@@ -319,14 +327,14 @@ textarea:focus-visible {
 
 .project-row strong {
   color: inherit;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 620;
 }
 
 .project-row small {
   margin-top: 2px;
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .project-expanded {
@@ -353,7 +361,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 29px;
+  min-height: 34px;
   gap: 7px;
   padding: 5px 8px;
   overflow: hidden;
@@ -361,7 +369,7 @@ textarea:focus-visible {
   color: var(--muted);
   background: transparent;
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .tree-row:hover,
@@ -371,6 +379,7 @@ textarea:focus-visible {
 }
 
 .tree-row.active {
+  background: rgb(214 247 94 / 7%);
   box-shadow: inset 2px 0 var(--accent);
 }
 
@@ -389,20 +398,20 @@ textarea:focus-visible {
 
 .tree-row.shot-row {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .tree-empty {
   padding: 8px 9px;
   color: var(--faint);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .muted-copy {
   margin: 5px 8px;
   color: var(--faint);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -414,7 +423,7 @@ textarea:focus-visible {
   border-top: 1px solid var(--border-soft);
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .branch-row svg {
@@ -456,7 +465,7 @@ textarea:focus-visible {
 
 .conversation-header h1 {
   margin-top: 3px;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .runtime-state {
@@ -465,7 +474,7 @@ textarea:focus-visible {
   gap: 6px;
   flex: 0 0 auto;
   color: var(--faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .runtime-state::before,
@@ -557,7 +566,7 @@ textarea:focus-visible {
   max-width: 500px;
   margin: 10px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 
@@ -571,15 +580,16 @@ textarea:focus-visible {
 
 .primary-button,
 .secondary-button {
-  min-height: 35px;
-  padding: 0 14px;
-  font-size: 11px;
+  min-height: 38px;
+  padding: 0 15px;
+  font-size: 13px;
   font-weight: 650;
 }
 
 .primary-button {
   color: #171a10;
   background: var(--accent);
+  box-shadow: inset 0 -1px rgb(0 0 0 / 16%);
 }
 
 .primary-button:hover {
@@ -587,22 +597,22 @@ textarea:focus-visible {
 }
 
 .primary-button.compact {
-  min-height: 30px;
-  padding: 0 11px;
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .secondary-button {
   color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--button);
+  border: 1px solid var(--button-border);
 }
 
 .text-button {
-  min-height: 28px;
-  padding: 0 8px;
+  min-height: 32px;
+  padding: 0 10px;
   color: var(--muted);
   background: transparent;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .text-button:hover {
@@ -624,7 +634,7 @@ textarea:focus-visible {
   color: var(--muted);
   background: rgb(27 28 28 / 70%);
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .prompt-suggestions button:hover {
@@ -660,7 +670,7 @@ textarea:focus-visible {
   border-radius: 12px 12px 3px 12px;
   color: var(--text);
   background: #252727;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -694,7 +704,7 @@ textarea:focus-visible {
   flex: 1;
   min-width: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.65;
 }
 
@@ -708,7 +718,7 @@ textarea:focus-visible {
 
 .assistant-heading strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .task-status,
@@ -718,7 +728,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 5px;
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.035em;
 }
@@ -767,7 +777,7 @@ textarea:focus-visible {
   padding: 9px 11px;
   border-left: 2px solid var(--danger);
   background: rgb(233 125 115 / 7%);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -779,7 +789,7 @@ textarea:focus-visible {
 .task-error details {
   margin-top: 7px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .task-error summary {
@@ -807,7 +817,7 @@ textarea:focus-visible {
   gap: 7px;
   min-height: 24px;
   color: var(--faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .task-step.running,
@@ -827,7 +837,7 @@ textarea:focus-visible {
   place-items: center;
   border: 1px solid var(--border);
   border-radius: 50%;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .task-step.running .step-indicator {
@@ -863,7 +873,7 @@ textarea:focus-visible {
   gap: 4px;
   list-style: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .inline-error {
@@ -872,7 +882,7 @@ textarea:focus-visible {
   border: 1px solid rgb(233 125 115 / 22%);
   border-radius: 7px;
   background: rgb(233 125 115 / 6%);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .composer-area {
@@ -886,7 +896,7 @@ textarea:focus-visible {
   width: min(100%, 690px);
   margin: 5px auto 0;
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .composer {
@@ -916,7 +926,7 @@ textarea:focus-visible {
 .composer textarea {
   display: block;
   width: 100%;
-  min-height: 52px;
+  min-height: 62px;
   max-height: 132px;
   resize: none;
   padding: 12px 14px 6px;
@@ -924,7 +934,7 @@ textarea:focus-visible {
   outline: 0;
   color: var(--text);
   background: transparent;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -972,20 +982,20 @@ textarea:focus-visible {
   outline: 0;
   color: var(--muted);
   background: transparent;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .composer-settings-toggle {
   display: inline-flex;
   flex: 0 0 auto;
-  min-height: 25px;
-  padding: 0 7px;
+  min-height: 30px;
+  padding: 0 9px;
   align-items: center;
   gap: 5px;
   border-radius: 6px;
   color: var(--faint);
   background: transparent;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .composer-settings-toggle:hover,
@@ -1009,7 +1019,7 @@ textarea:focus-visible {
   min-width: 0;
   gap: 5px;
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1026,14 +1036,14 @@ textarea:focus-visible {
   outline: 0;
   color: var(--muted);
   background: transparent;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .send-button {
   display: grid;
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   place-items: center;
   border-radius: 8px;
@@ -1065,7 +1075,7 @@ textarea:focus-visible {
 
 .resource-header h2 {
   margin-right: auto;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .resource-tabs {
@@ -1079,7 +1089,7 @@ textarea:focus-visible {
   padding: 0 9px;
   color: var(--faint);
   background: transparent;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1105,7 +1115,7 @@ textarea:focus-visible {
   border-radius: 999px;
   color: var(--faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .resource-scroll {
@@ -1136,7 +1146,7 @@ textarea:focus-visible {
 
 .resource-empty p {
   max-width: 340px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -1144,7 +1154,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
+  height: 40px;
   margin-bottom: 16px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -1163,7 +1173,7 @@ textarea:focus-visible {
   outline: 0;
   color: var(--text);
   background: transparent;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .workspace-empty-state {
@@ -1193,18 +1203,18 @@ textarea:focus-visible {
 
 .workspace-empty-state > strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .workspace-empty-state > p {
   max-width: 390px;
   margin: 7px 0 16px;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.65;
 }
 
 .workspace-empty-state .secondary-button {
-  min-height: 31px;
+  min-height: 36px;
 }
 
 .inspector-card,
@@ -1224,7 +1234,7 @@ textarea:focus-visible {
 .inspector-card h3 {
   margin: 6px 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 620;
   letter-spacing: -0.02em;
 }
@@ -1232,7 +1242,7 @@ textarea:focus-visible {
 .inspector-card p {
   margin: 6px 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -1279,13 +1289,13 @@ textarea:focus-visible {
 
 .inspector-title h2 {
   margin-top: 3px;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 .inspector-title p {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -1310,14 +1320,14 @@ textarea:focus-visible {
 .metadata-grid span {
   margin-bottom: 3px;
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .metadata-grid strong {
   overflow: hidden;
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1337,7 +1347,7 @@ textarea:focus-visible {
   background: #252727;
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .doctor-card.ok {
@@ -1354,7 +1364,7 @@ textarea:focus-visible {
   border-radius: 6px;
   color: var(--muted);
   background: #171818;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .resource-section {
@@ -1377,7 +1387,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   color: var(--text);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -1385,7 +1395,7 @@ textarea:focus-visible {
 .pane-section-heading span {
   color: var(--faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -1396,7 +1406,7 @@ textarea:focus-visible {
 .pane-section-heading h3 {
   margin: 0;
   color: var(--text);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .empty-resource-card {
@@ -1408,7 +1418,7 @@ textarea:focus-visible {
   gap: 7px;
   color: var(--faint);
   text-align: center;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .empty-resource-card svg {
@@ -1485,7 +1495,7 @@ textarea:focus-visible {
 .media-card strong,
 .shot-card strong {
   color: inherit;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .media-card small,
@@ -1493,7 +1503,7 @@ textarea:focus-visible {
   margin-top: 4px;
   color: var(--faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .media-card.render-card {
@@ -1517,7 +1527,7 @@ textarea:focus-visible {
   margin-bottom: 6px;
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .project-actions-grid {
@@ -1560,14 +1570,14 @@ textarea:focus-visible {
 
 .revision-card strong {
   color: inherit;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .revision-card small {
   margin-top: 4px;
   color: var(--faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .revision-dot {
@@ -1619,7 +1629,7 @@ textarea:focus-visible {
 .dialog > p,
 .settings-note {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -1627,6 +1637,18 @@ textarea:focus-visible {
   position: absolute;
   top: 14px;
   right: 14px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.dialog-close:hover {
+  color: var(--text);
+  background: var(--button);
 }
 
 .field-label {
@@ -1634,20 +1656,20 @@ textarea:focus-visible {
   margin-top: 14px;
   gap: 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .field-label input,
 .field-label select {
   width: 100%;
-  min-height: 36px;
+  min-height: 40px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
   outline: 0;
   color: var(--text);
   background: #151716;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dialog-actions {
@@ -1665,17 +1687,17 @@ textarea:focus-visible {
 .settings-section h3 {
   margin: 0 0 9px;
   color: var(--text);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .settings-row {
   justify-content: space-between;
   gap: 14px;
-  min-height: 35px;
+  min-height: 40px;
   padding: 6px 0;
   border-bottom: 1px solid rgb(43 45 45 / 55%);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .settings-value {
@@ -1719,7 +1741,7 @@ textarea:focus-visible {
 
 @media (max-width: 1180px) {
   .studio-shell {
-    grid-template-columns: 210px minmax(400px, 1fr) minmax(360px, 0.9fr);
+    grid-template-columns: 238px minmax(400px, 1fr) minmax(360px, 0.9fr);
   }
 
   .target-chip:nth-child(3) {
