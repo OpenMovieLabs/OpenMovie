@@ -6,7 +6,6 @@ import { pathToFileURL } from 'node:url';
 import {
   PROTOCOL_VERSION,
   analysisRecordSchema,
-  branchRecordSchema,
   coreHealthSchema,
   doctorReportSchema,
   fileDiffSchema,
@@ -401,33 +400,6 @@ void app
         .array()
         .parse(await core?.request({ method: 'revision.working_changes', params: {} })),
     );
-    ipcMain.handle('openmovie:branch-list', async () =>
-      branchRecordSchema
-        .array()
-        .parse(await core?.request({ method: 'revision.branch_list', params: {} })),
-    );
-    ipcMain.handle('openmovie:branch-create', async (_event, name: unknown) => {
-      if (typeof name !== 'string' || name.trim().length === 0)
-        throw new Error('Branch name is required');
-      return branchRecordSchema.parse(
-        await core?.request({ method: 'revision.branch_create', params: { name: name.trim() } }),
-      );
-    });
-    ipcMain.handle('openmovie:branch-switch', async (_event, name: unknown) => {
-      if (typeof name !== 'string') throw new Error('Branch name is required');
-      const branch = branchRecordSchema.parse(
-        await core?.request({ method: 'revision.branch_switch', params: { name } }),
-      );
-      return {
-        branch,
-        project: projectSummarySchema.parse(
-          await core?.request({ method: 'project.get_summary', params: {} }),
-        ),
-        revisions: revisionRecordSchema
-          .array()
-          .parse(await core?.request({ method: 'revision.list', params: { limit: 100 } })),
-      };
-    });
     ipcMain.handle('openmovie:entity-list', async (_event, kind: unknown) => {
       if (kind !== 'character' && kind !== 'scene' && kind !== 'shot') {
         throw new Error('Invalid entity kind');

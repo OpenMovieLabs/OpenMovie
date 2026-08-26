@@ -7,6 +7,7 @@ import { TaskEngine } from '@openmovie/task-engine';
 import { stringifyYaml } from '@openmovie/movie-ir';
 
 import { ProjectStore, ProjectStoreError } from './index.js';
+import { openProjectDatabase } from './database.js';
 
 describe('ProjectStore', () => {
   it('creates, reopens, and locks a portable project', async () => {
@@ -21,6 +22,14 @@ describe('ProjectStore', () => {
     const reopened = await ProjectStore.open(root);
     expect(reopened.revisions.list()).toHaveLength(1);
     await reopened.close();
+
+    const database = openProjectDatabase(join(root, '.openmovie', 'state.sqlite'), true);
+    expect(
+      database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'branches'")
+        .get(),
+    ).toBeUndefined();
+    database.close();
   });
 
   it('rebuilds missing runtime state from the portable Movie IR source tree', async () => {
@@ -110,6 +119,13 @@ describe('ProjectStore', () => {
 
     const restored = await project.revisions.restore(initial!, changed.id, 'user_local');
     expect(restored.parentId).toBe(changed.id);
+    expect(restored.id).not.toBe(initial);
+    expect(project.revisions.currentRevisionId()).toBe(restored.id);
+    expect(project.revisions.list().map((revision) => revision.id)).toEqual([
+      restored.id,
+      changed.id,
+      initial,
+    ]);
     expect((await project.readManifest()).project.title).toBe('Original');
     await project.close();
   });
@@ -206,29 +222,6 @@ describe('ProjectStore', () => {
         .find((file) => file.path === `scenes/${scene.id}.yaml`)
         ?.changes.some((change) => change.pointer === '/title'),
     ).toBe(true);
-    await project.close();
-  });
-
-  it('creates and switches isolated movie branches', async () => {
-    const parent = await mkdtemp(join(tmpdir(), 'openmovie-branches-'));
-    const root = join(parent, 'movie');
-    const project = await ProjectStore.create(root, { title: 'Branches' });
-    project.revisions.createBranch('visual-experiment');
-    await project.revisions.switchBranch('visual-experiment');
-    const created = await project.movies.createScene({
-      title: 'Alternate opening',
-      expectedRevisionId: project.revisions.currentRevisionId(),
-      authorId: 'user_local',
-    });
-    expect(await project.movies.list('scene')).toHaveLength(1);
-
-    await project.revisions.switchBranch('main');
-    expect(await project.movies.list('scene')).toHaveLength(0);
-    await project.revisions.switchBranch('visual-experiment');
-    expect((await project.movies.read('scene', created.entity.id)).id).toBe(created.entity.id);
-    expect(project.revisions.listBranches().find((branch) => branch.current)?.name).toBe(
-      'visual-experiment',
-    );
     await project.close();
   });
 

@@ -16,7 +16,7 @@ OpenMovie targets Windows and macOS. It can be driven by Codex, Claude Code, ano
 
 Pre-release beta engineering baseline. The conversation-first desktop now uses a three-pane workspace:
 project structure on the left, the creative Task thread in the center, and inspectable resources and
-versions on the right. The portable Movie IR, Revision and Branch model, recoverable tasks, local Harnesses, API Providers, immutable Takes, local media
+versions on the right. The portable Movie IR and linear Revision history, recoverable tasks, local Harnesses, API Providers, immutable Takes, local media
 derivation, multimodal analysis, evaluation/regression gates, timecoded feedback, Current Cut render,
 backup/repair, signed release pipeline, auto-update, bilingual accessible shell, performance gate and
 Plugin development mode are implemented. Real-provider compatibility and creative quality remain
@@ -98,7 +98,7 @@ For external Codex, Claude Code, or any MCP host, start the standalone stdio ser
 pnpm mcp --project /absolute/path/to/MyMovie
 ```
 
-The MCP server exposes project/entity reads, Story editing, Timeline assembly and render inspection, Take/evaluation/analysis/feedback/proposal inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and creative branches. Proposal acceptance remains an explicit Desktop action, and the server never exposes Provider API keys.
+The MCP server exposes project/entity reads, Story editing, Timeline assembly and render inspection, Take/evaluation/analysis/feedback/proposal inspection, structured Revision diffs, Working Changes, Scene/Shot creation, and history restoration as a new Revision. Proposal acceptance remains an explicit Desktop action, and the server never exposes Provider API keys.
 
 ## Repository
 

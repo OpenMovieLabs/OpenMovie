@@ -20,13 +20,17 @@ describe('OpenMovie MCP Server', () => {
     const tools = await client.listTools();
     expect(tools.tools.map((tool) => tool.name)).toContain('scene_create');
     expect(tools.tools.map((tool) => tool.name)).toContain('revision_diff');
+    expect(tools.tools.map((tool) => tool.name)).toContain('revision_restore');
+    expect(tools.tools.map((tool) => tool.name)).not.toContain('branch_create');
+    expect(tools.tools.map((tool) => tool.name)).not.toContain('branch_switch');
     expect(tools.tools.map((tool) => tool.name)).toContain('feedback_create');
     expect(tools.tools.map((tool) => tool.name)).toContain('timeline_assemble');
     expect(tools.tools.map((tool) => tool.name)).toContain('timeline_render_list');
     expect(tools.tools.map((tool) => tool.name)).toContain('proposal_list');
 
     const summary = await client.callTool({ name: 'project_summary', arguments: {} });
-    expect(summary.structuredContent).toMatchObject({ title: 'MCP Movie', currentBranch: 'main' });
+    expect(summary.structuredContent).toMatchObject({ title: 'MCP Movie' });
+    expect(summary.structuredContent).not.toHaveProperty('currentBranch');
 
     const expectedRevisionId = project.revisions.currentRevisionId();
     if (!expectedRevisionId) throw new Error('Expected an initial Revision');
@@ -149,17 +153,20 @@ describe('OpenMovie MCP Server', () => {
     ).toEqual({
       proposals: [],
     });
-    expect(
-      (await client.callTool({ name: 'branch_create', arguments: { name: 'mcp-branch' } })).isError,
-    ).not.toBe(true);
-    expect(
-      (await client.callTool({ name: 'branch_switch', arguments: { name: 'mcp-branch' } })).isError,
-    ).not.toBe(true);
-    const branchList = (await client.callTool({ name: 'branch_list', arguments: {} }))
-      .structuredContent as { branches: Array<{ name: string; current: boolean }> };
-    expect(
-      branchList.branches.some((branch) => branch.name === 'mcp-branch' && branch.current),
-    ).toBe(true);
+    const revisionHistory = project.revisions.list(100);
+    const currentRevision = revisionHistory[0];
+    const historicalRevision = revisionHistory.at(-1);
+    if (!currentRevision || !historicalRevision) throw new Error('Expected Revision history');
+    const restored = await client.callTool({
+      name: 'revision_restore',
+      arguments: {
+        revisionId: historicalRevision.id,
+        expectedRevisionId: currentRevision.id,
+      },
+    });
+    expect(restored.isError).not.toBe(true);
+    expect(restored.structuredContent).toMatchObject({ parentId: currentRevision.id });
+    expect(project.revisions.currentRevisionId()).not.toBe(historicalRevision.id);
 
     await client.close();
     await server.close();

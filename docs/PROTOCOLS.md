@@ -37,6 +37,9 @@ interface ProtocolVersion {
 - 每个进程启动后先完成 initialize，再接受业务请求。
 - 协议版本独立于 Desktop App 和 Movie IR Schema。
 
+当前 Core Protocol/API 为 `0.2.0`。该版本移除 Branch 命令，并把版本管理收敛为线性历史与
+`revision.restore` 追加恢复。
+
 ## 3. 标识
 
 - request_id：单次请求。
@@ -96,7 +99,7 @@ interface CoreCommand<T = unknown> {
 
 - Project：`project.create`、`project.open`、`project.get_summary`、`project.doctor`、存储报告/清理与
   `project.policy_update`。
-- Revision：commit、list、diff、working changes、restore、branch create/list/switch。
+- Revision：commit、list、diff、working changes、restore。历史是线性的，restore 追加新 Revision。
 - Movie IR：Brief、Story Bible、Character、Scene、Shot、Screenplay 和 Timeline 的读取、创建、装配、Current Cut Render 与乐观并发更新。
 - Media：Object import、Take list/select、Evaluation list、图片/视频分析及带证据的 Analysis list。
 - Feedback：绑定 Project、Scene、Shot、Take 或 Revision 的创建、查询与解决状态。
@@ -381,10 +384,9 @@ Tool 名称采用 namespace.action，例如 shot.get、shot.propose_patch。
 
 - project_summary / openmovie_project_summary
 - entity_list / openmovie_entity_list
-- revision_list、revision_diff、working_changes
+- revision_list、revision_diff、revision_restore、working_changes
 - scene_create / openmovie_scene_create
 - shot_create / openmovie_shot_create
-- branch_list、branch_create、branch_switch
 - story_get、story_update、timeline_get、timeline_assemble
 - timeline_render_list
 - take_list、evaluation_list、analysis_list

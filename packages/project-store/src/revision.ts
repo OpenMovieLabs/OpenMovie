@@ -50,16 +50,7 @@ export type RevisionRecord = {
   patch: MoviePatchOperation[];
   manifestHash: string;
   changedPaths: string[];
-  branch: string;
   createdAt: string;
-};
-
-export type BranchRecord = {
-  name: string;
-  headRevisionId: string;
-  current: boolean;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type StructuralChange = {
@@ -231,13 +222,6 @@ export class RevisionEngine {
     return row?.current_revision_id ?? null;
   }
 
-  currentBranch(): string {
-    const row = this.database
-      .prepare('SELECT current_branch FROM projects WHERE id = ?')
-      .get(this.projectId) as { current_branch: string } | undefined;
-    return row?.current_branch ?? 'main';
-  }
-
   async initializeCurrentSnapshot(): Promise<void> {
     const revisionId = this.currentRevisionId();
     if (!revisionId) return;
@@ -246,16 +230,7 @@ export class RevisionEngine {
       .get(revisionId) as { count: number };
     if (existing.count > 0) return;
     const snapshot = await this.captureWorkingSnapshot();
-    const now = new Date().toISOString();
-    this.database.transaction(() => {
-      this.insertSnapshotFiles(revisionId, snapshot);
-      this.database
-        .prepare(
-          `INSERT OR IGNORE INTO branches(project_id, name, head_revision_id, created_at, updated_at)
-           VALUES (?, 'main', ?, ?, ?)`,
-        )
-        .run(this.projectId, revisionId, now, now);
-    })();
+    this.database.transaction(() => this.insertSnapshotFiles(revisionId, snapshot))();
   }
 
   commit(input: CommitRevisionInput): Promise<RevisionRecord> {
@@ -327,7 +302,7 @@ export class RevisionEngine {
   list(limit = 100): RevisionRecord[] {
     const rows = this.database
       .prepare(
-        `SELECT id, parent_id, author_type, author_id, message, patch_json, manifest_hash, branch, created_at
+        `SELECT id, parent_id, author_type, author_id, message, patch_json, manifest_hash, created_at
          FROM revisions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
       )
       .all(this.projectId, limit) as Array<{
@@ -338,7 +313,6 @@ export class RevisionEngine {
       message: string;
       patch_json: string;
       manifest_hash: string;
-      branch: string;
       created_at: string;
     }>;
     return rows.map((row) => ({
@@ -350,7 +324,6 @@ export class RevisionEngine {
       patch: JSON.parse(row.patch_json) as MoviePatchOperation[],
       manifestHash: row.manifest_hash,
       changedPaths: this.changedPathsFor(row.id, row.parent_id),
-      branch: row.branch,
       createdAt: row.created_at,
     }));
   }
@@ -375,80 +348,6 @@ export class RevisionEngine {
     const revisionId = this.currentRevisionId();
     const committed = revisionId ? this.snapshotForRevision(revisionId) : [];
     return this.compareSnapshots(committed, await this.captureWorkingSnapshot());
-  }
-
-  listBranches(): BranchRecord[] {
-    const current = this.currentBranch();
-    return (
-      this.database
-        .prepare(
-          `SELECT name, head_revision_id, created_at, updated_at
-           FROM branches WHERE project_id = ? ORDER BY name`,
-        )
-        .all(this.projectId) as Array<{
-        name: string;
-        head_revision_id: string;
-        created_at: string;
-        updated_at: string;
-      }>
-    ).map((row) => ({
-      name: row.name,
-      headRevisionId: row.head_revision_id,
-      current: row.name === current,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
-  }
-
-  createBranch(name: string): BranchRecord {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,63}$/.test(name) || name.includes('..')) {
-      throw new Error(`Invalid branch name: ${name}`);
-    }
-    const head = this.currentRevisionId();
-    if (!head) throw new Error('Cannot branch a project without a Revision');
-    const now = new Date().toISOString();
-    this.database
-      .prepare(
-        `INSERT INTO branches(project_id, name, head_revision_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(this.projectId, name, head, now, now);
-    return { name, headRevisionId: head, current: false, createdAt: now, updatedAt: now };
-  }
-
-  switchBranch(name: string): Promise<BranchRecord> {
-    return this.exclusive(async () => {
-      const branch = this.database
-        .prepare(
-          `SELECT name, head_revision_id, created_at, updated_at
-           FROM branches WHERE project_id = ? AND name = ?`,
-        )
-        .get(this.projectId, name) as
-        | { name: string; head_revision_id: string; created_at: string; updated_at: string }
-        | undefined;
-      if (!branch) throw new Error(`Branch not found: ${name}`);
-      const snapshot = this.snapshotForRevision(branch.head_revision_id);
-      await this.writeSnapshot(snapshot);
-      this.database
-        .prepare(
-          `UPDATE projects SET current_branch = ?, current_revision_id = ?, manifest_hash = ?, updated_at = ?
-           WHERE id = ?`,
-        )
-        .run(
-          name,
-          branch.head_revision_id,
-          hashSnapshot(snapshot),
-          new Date().toISOString(),
-          this.projectId,
-        );
-      return {
-        name: branch.name,
-        headRevisionId: branch.head_revision_id,
-        current: true,
-        createdAt: branch.created_at,
-        updatedAt: branch.updated_at,
-      };
-    });
   }
 
   async recover(): Promise<number> {
@@ -507,7 +406,6 @@ export class RevisionEngine {
       patch: input.patch,
       manifestHash: hashSnapshot(snapshot),
       changedPaths: [...new Set(changedPaths)].sort(),
-      branch: this.currentBranch(),
       createdAt: new Date().toISOString(),
     };
     const journalPath = join(this.journalDirectory, `revision-${record.id}.json`);
@@ -528,8 +426,8 @@ export class RevisionEngine {
       .prepare(
         `INSERT OR IGNORE INTO revisions(
           id, project_id, parent_id, status, author_type, author_id, message,
-          patch_json, snapshot_yaml, manifest_hash, branch, created_at
-        ) VALUES (?, ?, ?, 'committed', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          patch_json, snapshot_yaml, manifest_hash, created_at
+        ) VALUES (?, ?, ?, 'committed', ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -541,7 +439,6 @@ export class RevisionEngine {
         JSON.stringify(record.patch),
         root.content,
         record.manifestHash,
-        record.branch,
         record.createdAt,
       );
     this.insertSnapshotFiles(record.id, snapshot);
@@ -551,17 +448,11 @@ export class RevisionEngine {
       )
       .run(record.id, record.manifestHash, record.createdAt, this.projectId);
     this.database
-      .prepare(
-        `UPDATE branches SET head_revision_id = ?, updated_at = ? WHERE project_id = ? AND name = ?`,
-      )
-      .run(record.id, record.createdAt, this.projectId, record.branch);
-    this.database
       .prepare('INSERT INTO events(type, payload_json, created_at) VALUES (?, ?, ?)')
       .run(
         'revision.committed',
         JSON.stringify({
           revisionId: record.id,
-          branch: record.branch,
           changedPaths: record.changedPaths,
         }),
         record.createdAt,

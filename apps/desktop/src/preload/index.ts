@@ -2,7 +2,6 @@ import type {
   CoreHealth,
   AnalysisRecord,
   DoctorReport,
-  BranchRecord,
   FileDiff,
   HarnessHealth,
   InitializeResult,
@@ -55,9 +54,6 @@ export type OpenMovieDesktopApi = {
   restoreRevision: (revisionId: string) => Promise<ProjectSummary>;
   getRevisionDiff: (revisionId: string) => Promise<RevisionDiff>;
   getWorkingChanges: () => Promise<FileDiff[]>;
-  listBranches: () => Promise<BranchRecord[]>;
-  createBranch: (name: string) => Promise<BranchRecord>;
-  switchBranch: (name: string) => Promise<BranchSwitchResult>;
   listEntities: (kind: 'character' | 'scene' | 'shot') => Promise<MovieEntity[]>;
   createCharacter: (name: string, appearance?: string) => Promise<EntityCommitResult<Character>>;
   createScene: (title: string, storyGoal?: string) => Promise<EntityCommitResult<Scene>>;
@@ -124,12 +120,6 @@ export type TaskRunResult = {
 export type EntityCommitResult<T extends MovieEntity> = {
   entity: T;
   revision: RevisionRecord;
-};
-
-export type BranchSwitchResult = {
-  branch: BranchRecord;
-  project: ProjectSummary;
-  revisions: RevisionRecord[];
 };
 
 export type TakeSelectionResult = {
@@ -239,11 +229,6 @@ const api: OpenMovieDesktopApi = {
   getRevisionDiff: (revisionId) =>
     ipcRenderer.invoke('openmovie:revision-diff', revisionId) as Promise<RevisionDiff>,
   getWorkingChanges: () => ipcRenderer.invoke('openmovie:working-changes') as Promise<FileDiff[]>,
-  listBranches: () => ipcRenderer.invoke('openmovie:branch-list') as Promise<BranchRecord[]>,
-  createBranch: (name) =>
-    ipcRenderer.invoke('openmovie:branch-create', name) as Promise<BranchRecord>,
-  switchBranch: (name) =>
-    ipcRenderer.invoke('openmovie:branch-switch', name) as Promise<BranchSwitchResult>,
   listEntities: (kind) =>
     ipcRenderer.invoke('openmovie:entity-list', kind) as Promise<MovieEntity[]>,
   createCharacter: (name, appearance) =>

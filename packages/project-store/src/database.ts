@@ -226,6 +226,12 @@ const migrations = [
       ALTER TABLE feedback ADD COLUMN end_us INTEGER;
     `,
   },
+  {
+    version: 10,
+    sql: `
+      DROP TABLE IF EXISTS branches;
+    `,
+  },
 ] as const;
 
 export function openProjectDatabase(path: string, readonly = false): Database.Database {

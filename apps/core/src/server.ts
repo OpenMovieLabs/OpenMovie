@@ -599,7 +599,7 @@ export class CoreServer {
               'project.doctor',
               'project.storage',
               'revision.commit',
-              'revision.branch',
+              'revision.restore',
               'movie.entity',
               'story.edit',
               'timeline.assemble',
@@ -728,12 +728,6 @@ export class CoreServer {
         );
         return { id: command.id, ok: true, result: revision };
       }
-      case 'revision.branch_list':
-        return {
-          id: command.id,
-          ok: true,
-          result: this.requireProject().revisions.listBranches(),
-        };
       case 'revision.diff':
         return {
           id: command.id,
@@ -751,18 +745,6 @@ export class CoreServer {
           id: command.id,
           ok: true,
           result: await this.requireProject().revisions.workingChanges(),
-        };
-      case 'revision.branch_create':
-        return {
-          id: command.id,
-          ok: true,
-          result: this.requireProject().revisions.createBranch(command.params.name),
-        };
-      case 'revision.branch_switch':
-        return {
-          id: command.id,
-          ok: true,
-          result: await this.requireProject().revisions.switchBranch(command.params.name),
         };
       case 'movie.entity_list':
         return {
@@ -1240,7 +1222,7 @@ export class CoreServer {
       {
         type: 'function',
         name: 'openmovie_project_summary',
-        description: 'Read the current OpenMovie project, branch, and Revision ID.',
+        description: 'Read the current OpenMovie project and Revision ID.',
         inputSchema: object({}),
       },
       {
@@ -1336,7 +1318,6 @@ export class CoreServer {
       root: project.root,
       locale: manifest.project.default_locale,
       currentRevisionId: project.revisions.currentRevisionId(),
-      currentBranch: project.revisions.currentBranch(),
       delivery: {
         width: manifest.delivery.width,
         height: manifest.delivery.height,

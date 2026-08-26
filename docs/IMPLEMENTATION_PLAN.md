@@ -25,7 +25,7 @@ Desktop 启动
 
 每个后续阶段都保持这条主路径可运行。
 
-当前可运行基线已覆盖 M0–M6 的 Beta 主路径：多文件 Movie IR Revision、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 Current Cut、创作分支、持久化 Task/Approval、Codex App Server、Claude Code 结构化只读规划、MCP、加密 Provider Secret、连接探测、远程数据与月度预算策略、Provider 用量台账、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、统一受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出、性能门禁、双语无障碍壳和 Windows/macOS 签名发布工作流。真实 Provider 兼容性、创作质量与干净机器发布验收仍需随具体 Beta Release 持续验证。
+当前可运行基线已覆盖 M0–M6 的 Beta 主路径：多文件 Movie IR 线性 Revision 历史与恢复、Brief/Story Bible、Scene/Shot、确定性 Timeline 与 Current Cut、持久化 Task/Approval、Codex App Server、Claude Code 结构化只读规划、MCP、加密 Provider Secret、连接探测、远程数据与月度预算策略、Provider 用量台账、OpenAI-compatible 图片与视觉理解、异步视频 Job、不可变 Take、关键帧视频分析、确定性 Evaluation、结构化 Feedback、统一受限动作提案与人工接受、受限媒体预览、选片 Revision、Project Doctor、CLI 导出、性能门禁、双语无障碍壳和 Windows/macOS 签名发布工作流。真实 Provider 兼容性、创作质量与干净机器发布验收仍需随具体 Beta Release 持续验证。
 
 ## 2. 工程约束
 

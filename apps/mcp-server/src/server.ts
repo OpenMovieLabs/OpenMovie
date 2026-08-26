@@ -24,8 +24,7 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
   server.registerTool(
     'project_summary',
     {
-      description:
-        'Read the current OpenMovie project identity, delivery settings, branch, and Revision.',
+      description: 'Read the current OpenMovie project identity, delivery settings, and Revision.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -36,7 +35,6 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
         locale: manifest.project.default_locale,
         delivery: manifest.delivery,
         currentRevisionId: project.revisions.currentRevisionId(),
-        currentBranch: project.revisions.currentBranch(),
       });
     },
   );
@@ -66,6 +64,20 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
       inputSchema: z.object({ revisionId: z.string().min(1) }),
     },
     ({ revisionId }) => Promise.resolve(result(project.revisions.diff(revisionId))),
+  );
+
+  server.registerTool(
+    'revision_restore',
+    {
+      description:
+        'Restore a historical Movie IR Revision by appending its snapshot as a new Revision.',
+      inputSchema: z.object({
+        revisionId: z.string().min(1),
+        expectedRevisionId: expectedRevisionSchema,
+      }),
+    },
+    async ({ revisionId, expectedRevisionId }) =>
+      result(await project.revisions.restore(revisionId, expectedRevisionId, 'mcp_agent')),
   );
 
   server.registerTool(
@@ -121,33 +133,6 @@ export function createOpenMovieMcpServer(project: ProjectStore): McpServer {
           ...(movement ? { movement } : {}),
         }),
       ),
-  );
-
-  server.registerTool(
-    'branch_list',
-    {
-      description: 'List isolated creative branches and their Revision heads.',
-      inputSchema: z.object({}),
-    },
-    () => Promise.resolve(result({ branches: project.revisions.listBranches() })),
-  );
-
-  server.registerTool(
-    'branch_create',
-    {
-      description: 'Create an isolated creative branch at the current Revision.',
-      inputSchema: z.object({ name: z.string().min(1).max(64) }),
-    },
-    ({ name }) => Promise.resolve(result(project.revisions.createBranch(name))),
-  );
-
-  server.registerTool(
-    'branch_switch',
-    {
-      description: 'Switch the working Movie IR file tree to another creative branch.',
-      inputSchema: z.object({ name: z.string().min(1).max(64) }),
-    },
-    async ({ name }) => result(await project.revisions.switchBranch(name)),
   );
 
   server.registerTool(

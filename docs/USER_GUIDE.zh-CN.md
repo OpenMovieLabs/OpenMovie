@@ -64,11 +64,11 @@ OpenMovie 会探测本机 Codex 与 Claude Code：
 - Evaluation 检查媒体类型、来源、请求哈希、分辨率、宽高比和时长，并报告相对上一 Take 的回归。
 - Timeline 按选中的 Take 确定性组装；Render 生成 Current Cut 并记录精确源 Revision。
 
-## 6. Revision、Branch 和外部编辑
+## 6. Revision 历史、恢复和外部编辑
 
-右侧“版本”页显示 Revision 历史与创作 Branch。Restore 会创建新的恢复
-Revision，不会抹掉历史。外部编辑受支持的 YAML 会显示为 Working Changes；冲突写入通过
-`expectedRevisionId` 拒绝，不会静默覆盖。
+右侧“版本”页显示线性 Revision 历史。选择历史版本并点击“恢复为新版本”后，OpenMovie 会把
+该快照追加为新的 Revision，不会抹掉历史或直接移动回旧版本。产品不提供分支或合并。外部编辑
+受支持的 YAML 会显示为 Working Changes；冲突写入通过 `expectedRevisionId` 拒绝，不会静默覆盖。
 
 ## 7. 工程体检、磁盘和备份
 

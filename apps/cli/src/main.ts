@@ -26,6 +26,7 @@ Usage:
   openmovie doctor <project> [--deep] [--json]
   openmovie entities <project> <character|scene|shot> [--json]
   openmovie revisions <project> [--json]
+  openmovie restore <project> <revision> [--json]
   openmovie renders <project> [--json]
   openmovie diff <project> <revision> [base-revision] [--json]
   openmovie export <project> <destination> [--deep] [--force]
@@ -93,6 +94,17 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
       }
       if (command === 'revisions') {
         print(io, project.revisions.list(100), hasFlag(argv, '--json'));
+        return 0;
+      }
+      if (command === 'restore') {
+        const revisionId = required(argv[2], 'Revision ID');
+        const currentRevisionId = project.revisions.currentRevisionId();
+        if (!currentRevisionId) throw new Error('Project has no current Revision');
+        print(
+          io,
+          await project.revisions.restore(revisionId, currentRevisionId, 'cli_user'),
+          hasFlag(argv, '--json'),
+        );
         return 0;
       }
       if (command === 'renders') {
@@ -181,7 +193,6 @@ async function summary(project: ProjectStore): Promise<Record<string, unknown>> 
     root: project.root,
     locale: manifest.project.default_locale,
     currentRevisionId: project.revisions.currentRevisionId(),
-    currentBranch: project.revisions.currentBranch(),
     counts: {
       characters: (await project.movies.list('character')).length,
       scenes: (await project.movies.list('scene')).length,

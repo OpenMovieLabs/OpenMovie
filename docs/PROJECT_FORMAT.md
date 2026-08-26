@@ -133,7 +133,7 @@ extensions: {}
 
 `monthly_budget_usd_micros` 使用一美元的百万分之一作为整数单位，避免浮点金额进入可版本化源文件；
 `null` 表示不设上限。`remote_media_policy` 可为 `allow`、`confirm` 或 `deny`，默认 `confirm`。
-两项修改都通过正常 Revision 提交，因此可以 Diff、回滚和按 Branch 管理。
+两项修改都通过正常 Revision 提交，因此可以 Diff，并可把任一历史快照恢复为新 Revision。
 
 ## 7. 通用实体头
 
@@ -406,7 +406,7 @@ schema_migrations
 
 `revision_proposals` 是可丢弃的运行状态，不属于 Movie IR 真源。它保存经过 Schema 验证的 Direct Agent Plan、Base Revision、审阅状态、可选 Feedback 关联和接受后 Revision ID。Proposal 只能在 Base Revision 仍为当前项目头时被接受，全部动作在一个 Movie IR Revision 中原子提交。
 
-当 `.openmovie/state.sqlite` 完全缺失且目录中存在可验证的 Movie IR 时，Core 自动创建迁移后的空数据库，把当前 YAML 全树捕获为 `Recover runtime state from Movie IR` Revision，并恢复 `main` 分支。该路径保证 Story/Scene/Shot/Timeline 可重新打开，但不能从 YAML 推导已经丢失的 Task、Take Provenance、Feedback 或历史 Revision；完整恢复必须使用包含原数据库和 Object Store 的导出备份。
+当 `.openmovie/state.sqlite` 完全缺失且目录中存在可验证的 Movie IR 时，Core 自动创建迁移后的空数据库，把当前 YAML 全树捕获为 `Recover runtime state from Movie IR` Revision，并将其作为线性历史的当前版本。该路径保证 Story/Scene/Shot/Timeline 可重新打开，但不能从 YAML 推导已经丢失的 Task、Take Provenance、Feedback 或历史 Revision；完整恢复必须使用包含原数据库和 Object Store 的导出备份。
 
 Feedback 的运行时记录可选保存 `start_us` / `end_us` 半开时间区间，用于把审阅意见定位到
 Take 的精确片段。它属于 SQLite 运行历史；导出备份会保留，只有 YAML 恢复时无法重建。

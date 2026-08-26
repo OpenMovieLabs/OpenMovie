@@ -312,11 +312,16 @@ describe('CoreServer', () => {
         await sendCore(server, 'revision.diff', { revisionId: assembled.revision.id }),
       ).toHaveProperty('files');
       expect(await sendCore(server, 'revision.working_changes')).toEqual([]);
-      await sendCore(server, 'revision.branch_create', { name: 'alternate-cut' });
-      await sendCore(server, 'revision.branch_switch', { name: 'alternate-cut' });
-      expect(await sendCore(server, 'revision.branch_list')).toEqual(
-        expect.arrayContaining([expect.objectContaining({ name: 'alternate-cut', current: true })]),
-      );
+      const currentRevision = revisions[0];
+      const historicalRevision = revisions.at(-1);
+      if (!currentRevision || !historicalRevision) throw new Error('Expected Revision history');
+      expect(
+        await sendCore(server, 'revision.restore', {
+          revisionId: historicalRevision.id,
+          expectedRevisionId: currentRevision.id,
+          authorId: 'user_local',
+        }),
+      ).toMatchObject({ parentId: currentRevision.id, authorId: 'user_local' });
     } finally {
       await server.close();
     }

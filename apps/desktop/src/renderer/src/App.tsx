@@ -10,7 +10,6 @@ import {
   FileText,
   Film,
   FolderOpen,
-  GitBranch,
   History,
   Image as ImageIcon,
   LoaderCircle,
@@ -31,7 +30,6 @@ import {
 } from 'lucide-react';
 
 import type {
-  BranchRecord,
   CoreHealth,
   DoctorReport,
   HarnessHealth,
@@ -174,7 +172,6 @@ export function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [proposals, setProposals] = useState<RevisionProposalRecord[]>([]);
   const [revisions, setRevisions] = useState<RevisionRecord[]>([]);
-  const [branches, setBranches] = useState<BranchRecord[]>([]);
   const [story, setStory] = useState<StoryDocuments | null>(null);
   const [selection, setSelection] = useState<ResourceSelection | null>(null);
   const [resourceView, setResourceView] = useState<ResourceView>('resources');
@@ -274,7 +271,6 @@ export function App(): React.JSX.Element {
       nextTasks,
       nextProposals,
       nextRevisions,
-      nextBranches,
       nextProviders,
       nextUsage,
     ] = await Promise.all([
@@ -286,7 +282,6 @@ export function App(): React.JSX.Element {
       window.openMovie.listTasks(),
       window.openMovie.listProposals(),
       window.openMovie.listRevisions(),
-      window.openMovie.listBranches(),
       window.openMovie.listProviders(),
       window.openMovie.getProviderUsage(),
     ]);
@@ -306,7 +301,6 @@ export function App(): React.JSX.Element {
     setTasks(nextTasks);
     setProposals(nextProposals);
     setRevisions(nextRevisions);
-    setBranches(nextBranches);
     setProviders(nextProviders);
     setUsage(nextUsage);
     setTakes(takeGroups.flat());
@@ -492,7 +486,11 @@ export function App(): React.JSX.Element {
   };
 
   const restoreRevision = (revision: RevisionRecord): void => {
-    void run(async () => loadProject(await window.openMovie.restoreRevision(revision.id)));
+    void run(async () => {
+      setSelection(null);
+      await loadProject(await window.openMovie.restoreRevision(revision.id));
+      setResourceView('versions');
+    });
   };
 
   const savePolicies = (): void => {
@@ -687,11 +685,8 @@ export function App(): React.JSX.Element {
                         <span>{text('工程检查', 'Project checks')}</span>
                       </button>
                     </nav>
-                    <div className="branch-row">
-                      <GitBranch size={14} />
-                      <span>
-                        {branches.find((branch) => branch.current)?.name ?? project.currentBranch}
-                      </span>
+                    <div className="revision-summary-row">
+                      <History size={14} />
                       <small>
                         {revisions.length} {text('个版本', 'revisions')}
                       </small>
@@ -1088,10 +1083,10 @@ export function App(): React.JSX.Element {
           <div className="resource-scroll versions-view">
             <div className="pane-section-heading">
               <div>
-                <span>{text('当前分支', 'CURRENT BRANCH')}</span>
-                <h2>{project.currentBranch}</h2>
+                <span>{text('线性历史', 'LINEAR HISTORY')}</span>
+                <h2>{text('历史版本', 'Version history')}</h2>
               </div>
-              <GitBranch size={18} />
+              <History size={18} />
             </div>
             <div className="revision-list">
               {revisions.map((revision, index) => (
@@ -1124,12 +1119,14 @@ export function App(): React.JSX.Element {
                   {selection.item.changedPaths.join('\n') ||
                     text('没有文件变化', 'No file changes')}
                 </p>
-                <button
-                  className="secondary-button"
-                  onClick={() => restoreRevision(selection.item)}
-                >
-                  <RotateCcw size={14} /> {text('恢复为新版本', 'Restore as new revision')}
-                </button>
+                {selection.item.id !== project.currentRevisionId && (
+                  <button
+                    className="secondary-button"
+                    onClick={() => restoreRevision(selection.item)}
+                  >
+                    <RotateCcw size={14} /> {text('恢复为新版本', 'Restore as new revision')}
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -20,6 +20,18 @@ describe('core contracts', () => {
     expect(() => assertProtocolCompatible('1.0.0')).toThrow(/major mismatch/);
   });
 
+  it('does not expose removed Revision branch commands', () => {
+    for (const method of [
+      'revision.branch_list',
+      'revision.branch_create',
+      'revision.branch_switch',
+    ]) {
+      expect(() =>
+        coreCommandSchema.parse({ id: 'removed-branch-command', method, params: {} }),
+      ).toThrow();
+    }
+  });
+
   it('reserves local Provider namespaces from remote profiles', () => {
     expect(() =>
       coreCommandSchema.parse({

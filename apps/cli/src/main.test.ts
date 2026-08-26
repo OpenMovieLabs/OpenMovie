@@ -57,5 +57,21 @@ describe('OpenMovie CLI', () => {
     const diagnosed = capture();
     expect(await runCli(['doctor', project, '--deep', '--json'], diagnosed.io)).toBe(0);
     expect(JSON.parse(diagnosed.output[0] ?? '{}')).toMatchObject({ status: 'healthy' });
+
+    const listed = capture();
+    expect(await runCli(['revisions', project, '--json'], listed.io)).toBe(0);
+    const revisions = JSON.parse(listed.output[0] ?? '[]') as Array<{ id: string }>;
+    const currentRevision = revisions[0];
+    const historicalRevision = revisions.at(-1);
+    if (!currentRevision || !historicalRevision) throw new Error('Expected Revision history');
+
+    const restored = capture();
+    expect(await runCli(['restore', project, historicalRevision.id, '--json'], restored.io)).toBe(
+      0,
+    );
+    expect(JSON.parse(restored.output[0] ?? '{}')).toMatchObject({
+      parentId: currentRevision.id,
+      authorId: 'cli_user',
+    });
   });
 });

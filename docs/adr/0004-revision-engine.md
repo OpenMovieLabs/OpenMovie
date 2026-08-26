@@ -5,13 +5,15 @@
 
 ## Context
 
-普通创作者不应被要求安装或理解 Git；媒体也不能进行文本合并。但项目需要版本、分支、Diff、冲突和回滚。
+普通创作者不应被要求安装或理解 Git；媒体也不能进行文本合并。项目需要易理解的历史版本、Diff、冲突检测和恢复能力，但不需要分支与合并工作流。
 
 ## Decision
 
 - OpenMovie 实现领域级 Revision Engine。
-- Revision 保存父版本、语义 MoviePatch、作者、影响、评测和费用。
+- Revision 保存单一父版本、语义 MoviePatch、作者、影响、评测和费用，形成线性历史。
 - 写操作使用 expectedRevisionId 乐观并发。
+- 恢复历史快照会追加一个新 Revision，不移动当前指针或改写历史。
+- 不实现 Branch、Checkout 和 Merge。
 - Take 与 Artifact 不可变。
 - Git 是可选互操作层，不是运行依赖。
 

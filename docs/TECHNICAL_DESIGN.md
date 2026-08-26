@@ -335,7 +335,7 @@ generation:
 ```typescript
 interface Revision {
   id: string;
-  parents: string[];
+  parentId: string | null;
   author: ActorRef;
   message: string;
   patch: MoviePatch;
@@ -384,7 +384,15 @@ Revision 不匹配时返回结构化 Conflict，不做最后写入者覆盖。
 - 不对视频和音频进行字节级合并。
 - 未引用对象由垃圾回收策略延迟清理，默认不立即删除。
 
-### 8.5 Git 互操作
+### 8.5 线性历史与恢复
+
+- 每个 Revision 最多有一个 `parentId`，项目只有一个当前版本指针。
+- 系统不实现 Branch、Checkout 或 Merge。
+- 恢复历史版本时读取目标快照，以恢复前的当前 Revision 为父版本追加一个新 Revision。
+- 恢复不修改或删除任何已有 Revision，也不把当前指针直接移回旧 Revision。
+- 过期写入仍通过 `expectedRevisionId` 拒绝，用户或 Agent 必须基于最新版本重新生成修改。
+
+### 8.6 Git 互操作
 
 MVP 不要求系统 Git 才能工作。
 

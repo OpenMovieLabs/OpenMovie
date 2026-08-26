@@ -125,7 +125,7 @@ textarea:focus-visible {
 }
 
 .brand-row,
-.branch-row,
+.revision-summary-row,
 .sidebar-footer,
 .conversation-header,
 .resource-header,
@@ -415,7 +415,7 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
-.branch-row {
+.revision-summary-row {
   gap: 7px;
   min-height: 28px;
   margin-top: 4px;
@@ -426,7 +426,7 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
-.branch-row svg {
+.revision-summary-row svg {
   width: 12px;
 }
 

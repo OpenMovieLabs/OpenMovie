@@ -275,9 +275,9 @@ function initializeRecoveredState(
       .prepare(
         `INSERT INTO revisions(
           id, project_id, parent_id, status, author_type, author_id, message,
-          patch_json, snapshot_yaml, manifest_hash, branch, created_at
+          patch_json, snapshot_yaml, manifest_hash, created_at
          ) VALUES (?, ?, NULL, 'committed', 'system', 'openmovie_recovery',
-          'Recover runtime state from Movie IR', '[]', ?, ?, 'main', ?)`,
+          'Recover runtime state from Movie IR', '[]', ?, ?, ?)`,
       )
       .run(revisionId, manifest.project.id, manifestYaml, manifestHash, now);
   })();

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { agentPlanSchema } from '@openmovie/movie-ir';
 
-export const PROTOCOL_VERSION = '0.1.0' as const;
-export const CORE_API_VERSION = '0.1.0' as const;
+export const PROTOCOL_VERSION = '0.2.0' as const;
+export const CORE_API_VERSION = '0.2.0' as const;
 
 export const commandIdSchema = z.string().min(1).max(128);
 
@@ -118,11 +118,6 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: commandIdSchema,
-    method: z.literal('revision.branch_list'),
-    params: z.object({}).default({}),
-  }),
-  z.object({
-    id: commandIdSchema,
     method: z.literal('revision.diff'),
     params: z.object({
       revisionId: z.string().min(1),
@@ -133,16 +128,6 @@ export const coreCommandSchema = z.discriminatedUnion('method', [
     id: commandIdSchema,
     method: z.literal('revision.working_changes'),
     params: z.object({}).default({}),
-  }),
-  z.object({
-    id: commandIdSchema,
-    method: z.literal('revision.branch_create'),
-    params: z.object({ name: z.string().min(1).max(64) }),
-  }),
-  z.object({
-    id: commandIdSchema,
-    method: z.literal('revision.branch_switch'),
-    params: z.object({ name: z.string().min(1).max(64) }),
   }),
   z.object({
     id: commandIdSchema,
@@ -455,7 +440,6 @@ export const projectSummarySchema = z.object({
   root: z.string(),
   locale: z.string(),
   currentRevisionId: z.string().nullable(),
-  currentBranch: z.string(),
   delivery: z.object({
     width: z.number().int(),
     height: z.number().int(),
@@ -485,16 +469,7 @@ export const revisionRecordSchema = z.object({
   patch: z.array(moviePatchOperationSchema),
   manifestHash: z.string(),
   changedPaths: z.array(z.string()),
-  branch: z.string(),
   createdAt: z.string().datetime(),
-});
-
-export const branchRecordSchema = z.object({
-  name: z.string(),
-  headRevisionId: z.string(),
-  current: z.boolean(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
 });
 
 export const structuralChangeSchema = z.object({
@@ -712,7 +687,6 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type ProviderUsageSummary = z.infer<typeof providerUsageSummarySchema>;
 export type MoviePatchOperation = z.infer<typeof moviePatchOperationSchema>;
 export type RevisionRecord = z.infer<typeof revisionRecordSchema>;
-export type BranchRecord = z.infer<typeof branchRecordSchema>;
 export type FileDiff = z.infer<typeof fileDiffSchema>;
 export type RevisionDiff = z.infer<typeof revisionDiffSchema>;
 export type StoredObject = z.infer<typeof storedObjectSchema>;
