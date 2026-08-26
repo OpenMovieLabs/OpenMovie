@@ -748,6 +748,7 @@ textarea:focus-visible {
 .task-status.queued svg,
 .task-status.planning svg,
 .task-status.running svg,
+.task-step.running .step-indicator svg,
 .send-button .lucide-loader-circle {
   animation: spin 0.9s linear infinite;
 }
@@ -829,6 +830,10 @@ textarea:focus-visible {
   color: var(--danger);
 }
 
+.task-step.cancelled {
+  color: var(--faint);
+}
+
 .step-indicator {
   display: grid;
   flex: 0 0 16px;
@@ -840,6 +845,12 @@ textarea:focus-visible {
   font-size: 10px;
 }
 
+.step-indicator svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.5;
+}
+
 .task-step.running .step-indicator {
   border-color: var(--blue);
   background: rgb(120 168 255 / 10%);
@@ -849,6 +860,18 @@ textarea:focus-visible {
   color: #171a10;
   border-color: var(--accent);
   background: var(--accent);
+}
+
+.task-step.failed .step-indicator {
+  color: var(--danger);
+  border-color: rgb(233 125 115 / 55%);
+  background: rgb(233 125 115 / 8%);
+}
+
+.task-step.cancelled .step-indicator {
+  color: var(--faint);
+  border-color: var(--border);
+  background: var(--panel-raised);
 }
 
 .message-actions {

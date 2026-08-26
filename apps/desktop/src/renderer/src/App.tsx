@@ -808,6 +808,9 @@ export function App(): React.JSX.Element {
                           <span>OpenMovie</span>
                           <div className={`task-status ${task.status}`}>
                             {activeTaskStatuses.has(task.status) && <LoaderCircle size={12} />}
+                            {task.status === 'succeeded' && <Check size={12} />}
+                            {task.status === 'failed' && <CircleAlert size={12} />}
+                            {task.status === 'cancelled' && <X size={12} />}
                             {taskStatusText(task.status, uiLocale)}
                           </div>
                         </div>
@@ -842,7 +845,12 @@ export function App(): React.JSX.Element {
                         <div className="task-steps">
                           {task.steps.map((step) => (
                             <div key={step.id} className={`task-step ${step.status}`}>
-                              <span className="step-indicator" />
+                              <span className="step-indicator" aria-hidden="true">
+                                {step.status === 'running' && <LoaderCircle size={10} />}
+                                {step.status === 'succeeded' && <Check size={11} />}
+                                {step.status === 'failed' && <CircleAlert size={10} />}
+                                {step.status === 'cancelled' && <X size={10} />}
+                              </span>
                               <span>{taskStepText(step.title, uiLocale)}</span>
                             </div>
                           ))}
